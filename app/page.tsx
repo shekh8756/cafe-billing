@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
+import { supabase } from "./lib/supabase";
 
 export default function CafeBillingApp() {
   const [products, setProducts] = useState<any[]>([
@@ -34,7 +35,15 @@ export default function CafeBillingApp() {
     email: "support@zenkai.com",
     logo: "https://dummyimage.com/200x80/000/fff&text=ZENKAI",
   });
+useEffect(() => {
+  const test = async () => {
+    const { data, error } = await supabase.from("products").select("*");
+    console.log("DATA:", data);
+    console.log("ERROR:", error);
+  };
 
+  test();
+}, []);
   const [newProduct, setNewProduct] = useState({
     name: "",
     price: "",
