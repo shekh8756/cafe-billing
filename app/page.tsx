@@ -1,49 +1,41 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { User } from "@supabase/supabase-js";
 import { supabase } from "./lib/supabase";
 
 export default function CafeBillingApp() {
-  const [products, setProducts] = useState<any[]>([
-    {
-      id: 1,
-      name: "Chicken Burger",
-      price: 120,
-      type: "Non Veg",
-      image:
-        "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?q=80&w=500",
-    },
-    {
-      id: 2,
-      name: "Cold Coffee",
-      price: 80,
-      type: "Veg",
-      image:
-        "https://images.unsplash.com/photo-1517701604599-bb29b565090c?q=80&w=500",
-    },
-  ]);
-
+  const [products, setProducts] = useState<any[]>([]);
   const [cart, setCart] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
-  const [editProduct, setEditProduct] = useState<any>(null);
+  const [orderItems, setOrderItems] = useState<any[]>([]);
+  const [tab, setTab] = useState("billing");
   const [paymentBy, setPaymentBy] = useState("Cash");
+  const [loading, setLoading] = useState(false);
+  const [editProduct, setEditProduct] = useState<any>(null);
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
 
-  const [account, setAccount] = useState({
-    cafe: "Zenkai Kitchen",
-    address: "Barasat, West Bengal",
-    phone: "9876543210",
-    email: "support@zenkai.com",
-    logo: "https://dummyimage.com/200x80/000/fff&text=ZENKAI",
+  const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<any>(null);
+  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
+
+  const [authForm, setAuthForm] = useState({
+    full_name: "",
+    email: "",
+    password: "",
   });
-useEffect(() => {
-  const test = async () => {
-    const { data, error } = await supabase.from("products").select("*");
-    console.log("DATA:", data);
-    console.log("ERROR:", error);
-  };
 
-  test();
-}, []);
+  const [settings, setSettings] = useState<any>({
+    cafe_name: "Zenkai Kitchen",
+    address: "",
+    phone: "",
+    email: "",
+    logo: "",
+    gst_number: "",
+    gst_enabled: true,
+  });
+
   const [newProduct, setNewProduct] = useState({
     name: "",
     price: "",
@@ -51,469 +43,974 @@ useEffect(() => {
     image: "",
   });
 
-  const addToCart = (product: any) => {
-    const existing = cart.find((i) => i.id === product.id);
+  useEffect(() => {
+    checkUser();
 
-    if (existing) {
-      setCart(cart.map((i) => (i.id === product.id ? { ...i, qty: i.qty + 1 } : i)));
-    } else {
-      setCart([...cart, { ...product, qty: 1 }]);
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(() => {
+      checkUser();
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  async function checkUser() {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    setUser(user || null);
+
+    if (user) {
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .single();
+
+      setProfile(profileData || null);
+      loadData();
     }
-  };
+  }
 
-  const increaseQty = (id: number) => {
-    setCart(cart.map((i) => (i.id === id ? { ...i, qty: i.qty + 1 } : i)));
-  };
+  async function handleAuth() {
+    if (!authForm.email || !authForm.password) {
+      return alert("Email aur password daalo");
+    }
 
-  const decreaseQty = (id: number) => {
-    setCart(
-      cart
-        .map((i) => (i.id === id ? { ...i, qty: i.qty - 1 } : i))
-        .filter((i) => i.qty > 0)
-    );
-  };
+    if (authMode === "signup") {
+      const { error } = await supabase.auth.signUp({
+        email: authForm.email,
+        password: authForm.password,
+        options: {
+          data: {
+            full_name: authForm.full_name,
+          },
+        },
+      });
 
-  const addProduct = () => {
-    if (!newProduct.name || !newProduct.price) {
-      alert("Enter product details");
+      if (error) return alert(error.message);
+
+      alert("Account created. Ab login karo.");
+      setAuthMode("login");
       return;
     }
 
-    setProducts([
-      ...products,
-      {
-        id: Date.now(),
-        name: newProduct.name,
-        price: Number(newProduct.price),
-        type: newProduct.type,
-        image:
-          newProduct.image ||
-          "https://dummyimage.com/500x300/e5e7eb/111827&text=Product",
-      },
-    ]);
+    const { error } = await supabase.auth.signInWithPassword({
+      email: authForm.email,
+      password: authForm.password,
+    });
+
+    if (error) return alert(error.message);
+  }
+
+  async function logout() {
+    await supabase.auth.signOut();
+    setUser(null);
+    setProfile(null);
+    setTab("billing");
+  }
+
+  async function loadData() {
+    const { data: productsData } = await supabase
+      .from("products")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    const { data: ordersData } = await supabase
+      .from("orders")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    const { data: itemsData } = await supabase
+      .from("order_items")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    const { data: settingsData } = await supabase
+      .from("cafe_settings")
+      .select("*")
+      .eq("id", 1)
+      .single();
+
+    setProducts(productsData || []);
+    setOrders(ordersData || []);
+    setOrderItems(itemsData || []);
+
+    if (settingsData) {
+      setSettings({
+        cafe_name: settingsData.cafe_name || "Zenkai Kitchen",
+        address: settingsData.address || "",
+        phone: settingsData.phone || "",
+        email: settingsData.email || "",
+        logo: settingsData.logo || "",
+        gst_number: settingsData.gst_number || "",
+        gst_enabled: settingsData.gst_enabled ?? true,
+      });
+    }
+  }
+
+  async function saveSettings() {
+    const { error } = await supabase
+      .from("cafe_settings")
+      .update({
+        cafe_name: settings.cafe_name,
+        address: settings.address,
+        phone: settings.phone,
+        email: settings.email,
+        logo: settings.logo,
+        gst_number: settings.gst_number,
+        gst_enabled: settings.gst_enabled,
+      })
+      .eq("id", 1);
+
+    if (error) return alert(error.message);
+
+    alert("Cafe details saved");
+    loadData();
+  }
+
+  async function addProduct() {
+    if (!newProduct.name || !newProduct.price) {
+      return alert("Product name aur price daalo");
+    }
+
+    const productData = {
+      name: newProduct.name,
+      price: Number(newProduct.price),
+      type: newProduct.type,
+      image:
+        newProduct.image ||
+        "https://dummyimage.com/500x300/e5e7eb/111827&text=Product",
+    };
+
+    if (editProduct) {
+      const { error } = await supabase
+        .from("products")
+        .update(productData)
+        .eq("id", editProduct.id);
+
+      if (error) return alert(error.message);
+
+      setEditProduct(null);
+    } else {
+      const { error } = await supabase.from("products").insert(productData);
+
+      if (error) return alert(error.message);
+    }
 
     setNewProduct({ name: "", price: "", type: "Veg", image: "" });
-  };
+    loadData();
+  }
 
-  const startEdit = (product: any) => {
+  function startEditProduct(product: any) {
     setEditProduct(product);
     setNewProduct({
       name: product.name,
       price: String(product.price),
       type: product.type,
-      image: product.image,
+      image: product.image || "",
     });
-  };
+  }
 
-  const updateProduct = () => {
-    if (!editProduct) return;
+  async function deleteProduct(id: string) {
+    if (!confirm("Kya aap product delete karna chahte hain?")) return;
 
-    setProducts(
-      products.map((p) =>
-        p.id === editProduct.id
-          ? {
-              ...p,
-              name: newProduct.name,
-              price: Number(newProduct.price),
-              type: newProduct.type,
-              image:
-                newProduct.image ||
-                "https://dummyimage.com/500x300/e5e7eb/111827&text=Product",
-            }
-          : p
-      )
-    );
+    const { error } = await supabase.from("products").delete().eq("id", id);
 
+    if (error) return alert(error.message);
+
+    setCart(cart.filter((i) => i.id !== id));
+    loadData();
+  }
+
+  function cancelEdit() {
+    setEditProduct(null);
+    setNewProduct({ name: "", price: "", type: "Veg", image: "" });
+  }
+
+  function addToCart(product: any) {
+    const found = cart.find((i) => i.id === product.id);
+
+    if (found) {
+      setCart(
+        cart.map((i) =>
+          i.id === product.id ? { ...i, qty: i.qty + 1 } : i
+        )
+      );
+    } else {
+      setCart([...cart, { ...product, qty: 1 }]);
+    }
+  }
+
+  function increaseQty(id: string) {
+    setCart(cart.map((i) => (i.id === id ? { ...i, qty: i.qty + 1 } : i)));
+  }
+
+  function decreaseQty(id: string) {
     setCart(
-      cart.map((i) =>
-        i.id === editProduct.id
-          ? {
-              ...i,
-              name: newProduct.name,
-              price: Number(newProduct.price),
-              type: newProduct.type,
-              image: newProduct.image,
-            }
-          : i
-      )
+      cart
+        .map((i) => (i.id === id ? { ...i, qty: i.qty - 1 } : i))
+        .filter((i) => i.qty > 0)
     );
+  }
 
-    setEditProduct(null);
-    setNewProduct({ name: "", price: "", type: "Veg", image: "" });
-  };
+  const subtotal = useMemo(
+    () => cart.reduce((sum, item) => sum + Number(item.price) * item.qty, 0),
+    [cart]
+  );
 
-  const deleteProduct = (id: number) => {
-    if (confirm("Are you sure delete this product?")) {
-      setProducts(products.filter((p) => p.id !== id));
-      setCart(cart.filter((i) => i.id !== id));
+  const tax = settings.gst_enabled ? Math.round(subtotal * 0.05) : 0;
+  const total = subtotal + tax;
+
+  async function saveOrder() {
+    if (cart.length === 0) return alert("Pehle product add karo");
+
+    setLoading(true);
+
+    const { data: order, error: orderError } = await supabase
+      .from("orders")
+      .insert({
+        subtotal,
+        tax,
+        total,
+        payment_by: paymentBy,
+        user_id: user?.id,
+        user_email: user?.email,
+      })
+      .select()
+      .single();
+
+    if (orderError) {
+      setLoading(false);
+      return alert(orderError.message);
     }
-  };
 
-  const cancelEdit = () => {
-    setEditProduct(null);
-    setNewProduct({ name: "", price: "", type: "Veg", image: "" });
-  };
+    const items = cart.map((item) => ({
+      order_id: order.id,
+      product_name: item.name,
+      price: Number(item.price),
+      qty: item.qty,
+      total: Number(item.price) * item.qty,
+    }));
 
-  const total = useMemo(() => {
-    return cart.reduce((s, i) => s + i.price * i.qty, 0);
-  }, [cart]);
+    const { error: itemsError } = await supabase
+      .from("order_items")
+      .insert(items);
 
-  const tax = Math.round(total * 0.05);
-  const finalTotal = total + tax;
-
-  const saveOrder = () => {
-    if (cart.length === 0) {
-      alert("Please add product first");
-      return;
+    if (itemsError) {
+      setLoading(false);
+      return alert(itemsError.message);
     }
 
-    const now = new Date();
-
-    const newOrder = {
-      id: Date.now(),
-      date: now.toLocaleDateString("en-IN"),
-      time: now.toLocaleTimeString("en-IN"),
-      amount: finalTotal,
-      paymentBy,
-      items: cart,
-    };
-
-    setOrders([newOrder, ...orders]);
+    printCurrentBill(order.id);
     setCart([]);
+    setLoading(false);
     alert("Order saved successfully");
-  };
+    loadData();
+  }
+
+  function billHtml({
+    billNo,
+    date,
+    payment,
+    items,
+    billSubtotal,
+    billTax,
+    billTotal,
+  }: any) {
+    return `
+<html>
+<head>
+<title>Bill</title>
+<style>
+@page { size: 80mm auto; margin: 0; }
+body { width:80mm; margin:0; padding:10px; font-family:Arial; color:#000; background:#fff; font-size:12px; }
+.center{text-align:center}
+.logo{max-width:70px;max-height:70px;object-fit:contain;margin-bottom:5px}
+h2{margin:4px 0;font-size:20px}
+p{margin:2px 0}
+.line{border-top:1px dashed #000;margin:8px 0}
+table{width:100%;border-collapse:collapse}
+td,th{padding:4px 0;font-size:12px}
+.right{text-align:right}
+.total{font-size:16px;font-weight:bold}
+.thanks{margin-top:10px;font-weight:bold;text-align:center}
+</style>
+</head>
+<body>
+<div class="center">
+${settings.logo ? `<img class="logo" src="${settings.logo}" />` : ""}
+<h2>${settings.cafe_name || "Zenkai Kitchen"}</h2>
+${settings.address ? `<p>${settings.address}</p>` : ""}
+${settings.phone ? `<p>Phone: ${settings.phone}</p>` : ""}
+${settings.email ? `<p>${settings.email}</p>` : ""}
+${billTax > 0 && settings.gst_number ? `<p>GST: ${settings.gst_number}</p>` : ""}
+</div>
+
+<div class="line"></div>
+<p><b>Bill No:</b> ${billNo}</p>
+<p><b>Date:</b> ${date}</p>
+<p><b>Payment:</b> ${payment}</p>
+<div class="line"></div>
+
+<table>
+<thead><tr><th align="left">Item</th><th class="right">Amt</th></tr></thead>
+<tbody>
+${items
+  .map(
+    (item: any) =>
+      `<tr><td>${item.name || item.product_name} x ${
+        item.qty
+      }</td><td class="right">₹${
+        item.total || Number(item.price) * item.qty
+      }</td></tr>`
+  )
+  .join("")}
+</tbody>
+</table>
+
+<div class="line"></div>
+<table>
+<tr><td>Subtotal</td><td class="right">₹${billSubtotal}</td></tr>
+${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""}
+<tr class="total"><td>Total</td><td class="right">₹${billTotal}</td></tr>
+</table>
+
+<div class="line"></div>
+<div class="thanks">Thank You Visit Again</div>
+<script>window.print();</script>
+</body>
+</html>`;
+  }
+
+  function openPrintWindow(html: string) {
+    const billWindow = window.open("", "_blank", "width=420,height=700");
+
+    if (!billWindow) return alert("Popup allow karo");
+
+    billWindow.document.write(html);
+    billWindow.document.close();
+  }
+
+  function printCurrentBill(orderId?: string) {
+    if (cart.length === 0) {
+      return alert("Bill print karne ke liye cart me item hona chahiye");
+    }
+
+    openPrintWindow(
+      billHtml({
+        billNo: orderId ? orderId.slice(0, 8).toUpperCase() : String(Date.now()),
+        date: new Date().toLocaleString("en-IN"),
+        payment: paymentBy,
+        items: cart,
+        billSubtotal: subtotal,
+        billTax: tax,
+        billTotal: total,
+      })
+    );
+  }
+
+  async function reprintOldBill(order: any) {
+    const { data: items, error } = await supabase
+      .from("order_items")
+      .select("*")
+      .eq("order_id", order.id);
+
+    if (error) return alert(error.message);
+    if (!items || items.length === 0) return alert("Is order ke items nahi mile");
+
+    openPrintWindow(
+      billHtml({
+        billNo: order.id.slice(0, 8).toUpperCase(),
+        date: new Date(order.created_at).toLocaleString("en-IN"),
+        payment: order.payment_by,
+        items,
+        billSubtotal: order.subtotal,
+        billTax: order.tax,
+        billTotal: order.total,
+      })
+    );
+  }
+
+  const filteredOrders = useMemo(() => {
+    return orders.filter((o) => {
+      if (!fromDate && !toDate) return true;
+
+      const orderDate = new Date(o.created_at);
+
+      if (fromDate) {
+        const from = new Date(fromDate);
+        if (orderDate < from) return false;
+      }
+
+      if (toDate) {
+        const to = new Date(toDate);
+        to.setHours(23, 59, 59, 999);
+        if (orderDate > to) return false;
+      }
+
+      return true;
+    });
+  }, [orders, fromDate, toDate]);
 
   const analytics = useMemo(() => {
-    const today = new Date().toLocaleDateString("en-IN");
     const now = new Date();
 
-    const todayOrders = orders.filter((o) => o.date === today);
+    const isToday = (date: string) =>
+      new Date(date).toDateString() === now.toDateString();
 
-    const weeklyOrders = orders.filter((o) => {
-      const [day, month, year] = o.date.split("/");
-      const orderDate = new Date(Number(year), Number(month) - 1, Number(day));
-      const diff = (now.getTime() - orderDate.getTime()) / (1000 * 60 * 60 * 24);
-      return diff <= 7;
-    });
+    const isLast7Days = (date: string) =>
+      (now.getTime() - new Date(date).getTime()) / (1000 * 60 * 60 * 24) <= 7;
 
-    const monthlyOrders = orders.filter((o) => {
-      const [day, month, year] = o.date.split("/");
-      const orderDate = new Date(Number(year), Number(month) - 1, Number(day));
-      return orderDate.getMonth() === now.getMonth() && orderDate.getFullYear() === now.getFullYear();
-    });
+    const isThisMonth = (date: string) => {
+      const d = new Date(date);
+      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    };
 
-    const sum = (list: any[]) => list.reduce((s, o) => s + o.amount, 0);
+    const sum = (list: any[]) =>
+      list.reduce((s, o) => s + Number(o.total || 0), 0);
 
-    const cashTotal = orders
-      .filter((o) => o.paymentBy === "Cash")
-      .reduce((s, o) => s + o.amount, 0);
+    const todayOrders = orders.filter((o) => isToday(o.created_at));
+    const weekOrders = orders.filter((o) => isLast7Days(o.created_at));
+    const monthOrders = orders.filter((o) => isThisMonth(o.created_at));
 
-    const upiTotal = orders
-      .filter((o) => o.paymentBy === "UPI Online")
-      .reduce((s, o) => s + o.amount, 0);
+    const itemMap: any = {};
 
-    const dateWise: any = {};
-
-    orders.forEach((o) => {
-      if (!dateWise[o.date]) {
-        dateWise[o.date] = {
-          date: o.date,
-          orders: 0,
-          amount: 0,
-          cash: 0,
-          upi: 0,
+    orderItems.forEach((item) => {
+      if (!itemMap[item.product_name]) {
+        itemMap[item.product_name] = {
+          name: item.product_name,
+          qty: 0,
+          total: 0,
         };
       }
 
-      dateWise[o.date].orders += 1;
-      dateWise[o.date].amount += o.amount;
-
-      if (o.paymentBy === "Cash") {
-        dateWise[o.date].cash += o.amount;
-      } else {
-        dateWise[o.date].upi += o.amount;
-      }
+      itemMap[item.product_name].qty += Number(item.qty);
+      itemMap[item.product_name].total += Number(item.total);
     });
+
+    const filteredTotal = sum(filteredOrders);
+    const filteredTax = filteredOrders.reduce((s, o) => s + Number(o.tax || 0), 0);
 
     return {
       todaySale: sum(todayOrders),
-      weeklySale: sum(weeklyOrders),
-      monthlySale: sum(monthlyOrders),
-      todayOrders: todayOrders.length,
-      weeklyOrders: weeklyOrders.length,
-      monthlyOrders: monthlyOrders.length,
-      cashTotal,
-      upiTotal,
-      dateWise: Object.values(dateWise),
+      weekSale: sum(weekOrders),
+      monthSale: sum(monthOrders),
+      totalSale: sum(orders),
+      filteredTotal,
+      filteredTax,
+      filteredCount: filteredOrders.length,
+      itemWise: Object.values(itemMap),
     };
-  }, [orders]);
+  }, [orders, orderItems, filteredOrders]);
 
-  const printBill = (size: "3inch" | "4inch") => {
-    if (cart.length === 0) {
-      alert("Please add product first");
-      return;
-    }
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100 p-5 text-black">
+        <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
+          <h1 className="text-3xl font-bold mb-6 text-center">
+            {settings.cafe_name || "Zenkai Kitchen"} POS
+          </h1>
 
-    const width = size === "3inch" ? "76mm" : "100mm";
+          {authMode === "signup" && (
+            <input
+              className="w-full border p-3 rounded mb-3"
+              placeholder="Full Name"
+              value={authForm.full_name}
+              onChange={(e) =>
+                setAuthForm({ ...authForm, full_name: e.target.value })
+              }
+            />
+          )}
 
-    const html = `
-    <html>
-    <head>
-      <style>
-        @page { size: ${width}; margin:0 }
-        body {
-          width:${width};
-          margin:0;
-          padding:4px;
-          font-family:Arial;
-          background:white;
-          color:black;
-          font-size:12px;
-        }
-        .row { display:flex; justify-content:space-between; gap:6px; margin:5px 0 }
-        .line { border-top:1px dashed black; margin:8px 0 }
-        img { max-width:110px; max-height:55px; object-fit:contain }
-        h2 { margin:4px 0; font-size:18px; }
-        p { margin:2px 0; }
-        * { color:black !important }
-      </style>
-    </head>
+          <input
+            className="w-full border p-3 rounded mb-3"
+            placeholder="Email"
+            type="email"
+            value={authForm.email}
+            onChange={(e) =>
+              setAuthForm({ ...authForm, email: e.target.value })
+            }
+          />
 
-    <body>
-      <center>
-        <img src="${account.logo}" />
-        <h2>${account.cafe}</h2>
-        <p>${account.address}</p>
-        <p>${account.phone}</p>
-        <p>${account.email}</p>
-      </center>
+          <input
+            className="w-full border p-3 rounded mb-4"
+            placeholder="Password"
+            type="password"
+            value={authForm.password}
+            onChange={(e) =>
+              setAuthForm({ ...authForm, password: e.target.value })
+            }
+          />
 
-      <div class="line"></div>
+          <button
+            onClick={handleAuth}
+            className="w-full bg-black text-white p-3 rounded"
+          >
+            {authMode === "login" ? "Login" : "Create Account"}
+          </button>
 
-      ${cart
-        .map(
-          (i) => `
-        <div class="row">
-          <span>${i.name} x${i.qty}</span>
-          <span>₹${i.qty * i.price}</span>
+          <button
+            onClick={() => setAuthMode(authMode === "login" ? "signup" : "login")}
+            className="w-full mt-3 text-blue-600"
+          >
+            {authMode === "login"
+              ? "Create new staff account"
+              : "Already have account? Login"}
+          </button>
         </div>
-      `
-        )
-        .join("")}
+      </div>
+    );
+  }
 
-      <div class="line"></div>
-
-      <div class="row"><span>Subtotal</span><span>₹${total}</span></div>
-      <div class="row"><span>GST</span><span>₹${tax}</span></div>
-      <div class="row"><b>Total</b><b>₹${finalTotal}</b></div>
-      <div class="row"><b>Payment</b><b>${paymentBy}</b></div>
-
-      <div class="line"></div>
-      <center>Thank You</center>
-
-      <script>window.print()</script>
-    </body>
-    </html>
-    `;
-
-    const w = window.open("", "_blank", "width=400,height=600");
-    if (!w) return alert("Popup allow karo");
-    w.document.write(html);
-    w.document.close();
-  };
+  const isAdmin = profile?.role === "admin";
 
   return (
     <div className="min-h-screen bg-gray-100 p-5 text-black">
-      <h1 className="text-3xl font-bold mb-5 text-black">Zenkai Kitchen</h1>
+      <div className="flex justify-between items-center mb-5">
+        <h1 className="text-3xl font-bold">
+          {settings.cafe_name || "Zenkai Kitchen"} POS
+        </h1>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-5">
-        <div className="bg-white p-5 rounded-2xl shadow-xl text-black border border-gray-200">
-          <h2 className="text-lg font-bold mb-3 text-black">Account</h2>
+        <div className="flex gap-3 items-center">
+          <div className="text-right">
+            <div className="font-bold">{profile?.full_name || user.email}</div>
+            <div className="text-sm text-gray-600">{profile?.role || "staff"}</div>
+          </div>
 
-          <input className="w-full mb-2 p-2 border rounded text-black" placeholder="Cafe Name" value={account.cafe} onChange={(e) => setAccount({ ...account, cafe: e.target.value })} />
-          <input className="w-full mb-2 p-2 border rounded text-black" placeholder="Address" value={account.address} onChange={(e) => setAccount({ ...account, address: e.target.value })} />
-          <input className="w-full mb-2 p-2 border rounded text-black" placeholder="Phone" value={account.phone} onChange={(e) => setAccount({ ...account, phone: e.target.value })} />
-          <input className="w-full mb-2 p-2 border rounded text-black" placeholder="Email" value={account.email} onChange={(e) => setAccount({ ...account, email: e.target.value })} />
-          <input className="w-full mb-2 p-2 border rounded text-black" placeholder="Logo URL" value={account.logo} onChange={(e) => setAccount({ ...account, logo: e.target.value })} />
-
-          <h2 className="text-lg font-bold mt-5 mb-3 text-black">
-            {editProduct ? "Edit Product" : "Add Product"}
-          </h2>
-
-          <input className="w-full mb-2 p-2 border rounded text-black" placeholder="Product Name" value={newProduct.name} onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })} />
-          <input className="w-full mb-2 p-2 border rounded text-black" placeholder="Price" type="number" value={newProduct.price} onChange={(e) => setNewProduct({ ...newProduct, price: e.target.value })} />
-
-          <select className="w-full mb-2 p-2 border rounded text-black" value={newProduct.type} onChange={(e) => setNewProduct({ ...newProduct, type: e.target.value })}>
-            <option>Veg</option>
-            <option>Non Veg</option>
-          </select>
-
-          <input className="w-full mb-2 p-2 border rounded text-black" placeholder="Image URL" value={newProduct.image} onChange={(e) => setNewProduct({ ...newProduct, image: e.target.value })} />
-
-          <button
-            onClick={editProduct ? updateProduct : addProduct}
-            className="w-full bg-black text-white p-2 rounded mt-2"
-          >
-            {editProduct ? "Update Product" : "Add Product"}
+          <button onClick={logout} className="bg-red-600 text-white px-4 py-2 rounded">
+            Logout
           </button>
+        </div>
+      </div>
 
-          {editProduct && (
-            <button
-              onClick={cancelEdit}
-              className="w-full bg-gray-500 text-white p-2 rounded mt-2"
-            >
-              Cancel Edit
-            </button>
+      <div className="flex flex-wrap gap-3 mb-5">
+        <button
+          onClick={() => setTab("billing")}
+          className="bg-black text-white px-4 py-2 rounded"
+        >
+          Billing
+        </button>
+
+        {isAdmin && (
+          <button
+            onClick={() => setTab("admin")}
+            className="bg-blue-600 text-white px-4 py-2 rounded"
+          >
+            Admin Dashboard
+          </button>
+        )}
+
+        {isAdmin && (
+          <button
+            onClick={() => setTab("records")}
+            className="bg-green-600 text-white px-4 py-2 rounded"
+          >
+            Previous Records
+          </button>
+        )}
+      </div>
+
+      {tab === "billing" && (
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-5">
+          {isAdmin && (
+            <div className="bg-white p-5 rounded-xl shadow">
+              <h2 className="text-xl font-bold mb-3">
+                {editProduct ? "Edit Product" : "Add Product"}
+              </h2>
+
+              <input
+                className="w-full border p-2 mb-2 rounded"
+                placeholder="Product Name"
+                value={newProduct.name}
+                onChange={(e) =>
+                  setNewProduct({ ...newProduct, name: e.target.value })
+                }
+              />
+
+              <input
+                className="w-full border p-2 mb-2 rounded"
+                placeholder="Price"
+                type="number"
+                value={newProduct.price}
+                onChange={(e) =>
+                  setNewProduct({ ...newProduct, price: e.target.value })
+                }
+              />
+
+              <select
+                className="w-full border p-2 mb-2 rounded"
+                value={newProduct.type}
+                onChange={(e) =>
+                  setNewProduct({ ...newProduct, type: e.target.value })
+                }
+              >
+                <option>Veg</option>
+                <option>Non Veg</option>
+              </select>
+
+              <input
+                className="w-full border p-2 mb-2 rounded"
+                placeholder="Image URL"
+                value={newProduct.image}
+                onChange={(e) =>
+                  setNewProduct({ ...newProduct, image: e.target.value })
+                }
+              />
+
+              <button onClick={addProduct} className="w-full bg-black text-white p-2 rounded">
+                {editProduct ? "Update Product" : "Add Product"}
+              </button>
+
+              {editProduct && (
+                <button
+                  onClick={cancelEdit}
+                  className="w-full bg-gray-500 text-white p-2 rounded mt-2"
+                >
+                  Cancel Edit
+                </button>
+              )}
+            </div>
           )}
 
-          <h2 className="text-lg font-bold mt-6 mb-3 text-black">Product Manage</h2>
+          <div className={isAdmin ? "lg:col-span-2" : "lg:col-span-3"}>
+            <h2 className="text-xl font-bold mb-3">Menu</h2>
 
-          <div className="max-h-64 overflow-auto">
-            {products.map((p) => (
-              <div key={p.id} className="border rounded p-2 mb-2 text-black">
-                <div className="font-bold text-sm text-black">{p.name}</div>
-                <div className="text-sm text-black">₹{p.price} - {p.type}</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {products.map((p) => (
+                <div key={p.id} className="bg-white p-4 rounded-xl shadow">
+                  <img src={p.image} className="h-32 w-full object-cover rounded" alt={p.name} />
+                  <h3 className="font-bold mt-2">{p.name}</h3>
+                  <p>₹{p.price}</p>
+                  <p className="text-sm">{p.type}</p>
 
-                <div className="flex gap-2 mt-2">
-                  <button onClick={() => startEdit(p)} className="bg-blue-600 text-white px-3 py-1 rounded text-sm">
-                    Edit
+                  <button
+                    onClick={() => addToCart(p)}
+                    className="bg-blue-600 text-white px-4 py-2 mt-2 rounded"
+                  >
+                    Add
                   </button>
 
-                  <button onClick={() => deleteProduct(p.id)} className="bg-red-600 text-white px-3 py-1 rounded text-sm">
-                    Delete
+                  {isAdmin && (
+                    <div className="flex gap-2 mt-2">
+                      <button
+                        onClick={() => startEditProduct(p)}
+                        className="bg-yellow-500 text-white px-3 py-1 rounded text-sm"
+                      >
+                        Edit
+                      </button>
+
+                      <button
+                        onClick={() => deleteProduct(p.id)}
+                        className="bg-red-600 text-white px-3 py-1 rounded text-sm"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-white p-5 rounded-xl shadow">
+            <h2 className="text-xl font-bold mb-3">Bill</h2>
+
+            {cart.length === 0 && <p className="text-gray-500 text-sm">No item added</p>}
+
+            {cart.map((item) => (
+              <div key={item.id} className="border-b py-2">
+                <div className="flex justify-between">
+                  <span>{item.name} x {item.qty}</span>
+                  <span>₹{Number(item.price) * item.qty}</span>
+                </div>
+
+                <div className="flex gap-2 mt-2">
+                  <button
+                    onClick={() => increaseQty(item.id)}
+                    className="bg-blue-600 text-white px-3 py-1 rounded"
+                  >
+                    +
+                  </button>
+
+                  <button
+                    onClick={() => decreaseQty(item.id)}
+                    className="bg-red-600 text-white px-3 py-1 rounded"
+                  >
+                    -
                   </button>
                 </div>
               </div>
             ))}
-          </div>
 
-          <h2 className="text-lg font-bold mt-6 mb-3 text-black">Analytics</h2>
-
-          <div className="text-sm space-y-2 text-black">
-            <div className="border rounded p-2">Today Sale: ₹{analytics.todaySale}</div>
-            <div className="border rounded p-2">Weekly Sale: ₹{analytics.weeklySale}</div>
-            <div className="border rounded p-2">Monthly Sale: ₹{analytics.monthlySale}</div>
-            <div className="border rounded p-2">Today Orders: {analytics.todayOrders}</div>
-            <div className="border rounded p-2">Weekly Orders: {analytics.weeklyOrders}</div>
-            <div className="border rounded p-2">Monthly Orders: {analytics.monthlyOrders}</div>
-            <div className="border rounded p-2">Cash Total: ₹{analytics.cashTotal}</div>
-            <div className="border rounded p-2">UPI Online Total: ₹{analytics.upiTotal}</div>
-          </div>
-
-          <h2 className="text-lg font-bold mt-6 mb-3 text-black">Date By Date</h2>
-
-          <div className="max-h-52 overflow-auto text-sm text-black">
-            {analytics.dateWise.length === 0 && (
-              <p className="text-gray-500">No sales yet</p>
-            )}
-
-            {analytics.dateWise.map((d: any) => (
-              <div key={d.date} className="border rounded p-2 mb-2">
-                <div className="font-bold">{d.date}</div>
-                <div>Orders: {d.orders}</div>
-                <div>Total: ₹{d.amount}</div>
-                <div>Cash: ₹{d.cash}</div>
-                <div>UPI: ₹{d.upi}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="lg:col-span-2">
-          <h2 className="text-xl font-bold mb-3 text-black">Menu</h2>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {products.map((p) => (
-              <div key={p.id} className="bg-white p-4 rounded-xl shadow">
-                <img src={p.image} className="h-32 w-full object-cover rounded-lg" />
-
-                <h3 className="font-bold mt-2 text-black">{p.name}</h3>
-                <p className="text-black">₹{p.price}</p>
-
-                <span className={`inline-block text-xs px-2 py-1 rounded mt-1 ${p.type === "Veg" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-                  {p.type}
-                </span>
-
-                <br />
-
-                <button onClick={() => addToCart(p)} className="bg-blue-600 text-white px-4 py-2 mt-2 rounded">
-                  Add
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="bg-white p-5 rounded-xl shadow text-black">
-          <h2 className="text-xl font-bold mb-3 text-black">Bill</h2>
-
-          {cart.length === 0 && (
-            <p className="text-gray-500 text-sm">No item added</p>
-          )}
-
-          {cart.map((i) => (
-            <div key={i.id} className="mb-3 text-black">
-              <div className="flex justify-between mb-1">
-                <span>{i.name} x{i.qty}</span>
-                <span>₹{i.qty * i.price}</span>
+            <div className="mt-4 space-y-1">
+              <div className="flex justify-between">
+                <span>Subtotal</span>
+                <span>₹{subtotal}</span>
               </div>
 
-              <div className="flex gap-2">
-                <button onClick={() => increaseQty(i.id)} className="bg-blue-600 text-white px-3 py-1 rounded">
-                  +
-                </button>
+              {settings.gst_enabled && (
+                <div className="flex justify-between">
+                  <span>GST</span>
+                  <span>₹{tax}</span>
+                </div>
+              )}
 
-                <button onClick={() => decreaseQty(i.id)} className="bg-red-600 text-white px-3 py-1 rounded">
-                  -
-                </button>
+              <div className="flex justify-between font-bold text-lg">
+                <span>Total</span>
+                <span>₹{total}</span>
               </div>
             </div>
-          ))}
 
-          <hr className="my-2" />
-
-          <div className="flex justify-between text-black">
-            <span>Subtotal</span>
-            <span>₹{total}</span>
-          </div>
-
-          <div className="flex justify-between text-black">
-            <span>GST</span>
-            <span>₹{tax}</span>
-          </div>
-
-          <div className="flex justify-between text-black font-bold text-lg">
-            <span>Total</span>
-            <span>₹{finalTotal}</span>
-          </div>
-
-          <div className="mt-4">
-            <label className="block text-black font-bold mb-2">Payment By</label>
             <select
-              className="w-full p-2 border rounded text-black"
+              className="w-full border p-2 mt-4 rounded"
               value={paymentBy}
               onChange={(e) => setPaymentBy(e.target.value)}
             >
               <option>Cash</option>
               <option>UPI Online</option>
             </select>
-          </div>
 
-          <button onClick={saveOrder} className="w-full bg-black text-white p-3 rounded mt-4">
-            Save Order
-          </button>
-
-          <div className="grid grid-cols-2 gap-3 mt-5">
-            <button onClick={() => printBill("3inch")} className="bg-green-600 text-white p-3 rounded">
-              3 Inch Print
+            <button
+              disabled={loading}
+              onClick={saveOrder}
+              className="w-full bg-black text-white p-3 rounded mt-4"
+            >
+              {loading ? "Saving..." : "Save Order & Print"}
             </button>
 
-            <button onClick={() => printBill("4inch")} className="bg-blue-600 text-white p-3 rounded">
-              4 Inch Print
-            </button>
           </div>
         </div>
-      </div>
+      )}
+
+      {tab === "admin" && isAdmin && (
+        <div>
+          <h2 className="text-2xl font-bold mb-4">Admin Dashboard</h2>
+
+          <div className="bg-white p-5 rounded-xl shadow mb-5">
+            <h3 className="text-xl font-bold mb-4">Cafe Account Details</h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <input
+                className="border p-2 rounded"
+                placeholder="Cafe Name"
+                value={settings.cafe_name}
+                onChange={(e) =>
+                  setSettings({ ...settings, cafe_name: e.target.value })
+                }
+              />
+
+              <input
+                className="border p-2 rounded"
+                placeholder="Phone Number"
+                value={settings.phone}
+                onChange={(e) => setSettings({ ...settings, phone: e.target.value })}
+              />
+
+              <input
+                className="border p-2 rounded"
+                placeholder="Email"
+                value={settings.email}
+                onChange={(e) => setSettings({ ...settings, email: e.target.value })}
+              />
+
+              <input
+                className="border p-2 rounded"
+                placeholder="GST Number"
+                value={settings.gst_number}
+                onChange={(e) =>
+                  setSettings({ ...settings, gst_number: e.target.value })
+                }
+              />
+
+              <input
+                className="border p-2 rounded md:col-span-2"
+                placeholder="Address"
+                value={settings.address}
+                onChange={(e) =>
+                  setSettings({ ...settings, address: e.target.value })
+                }
+              />
+
+              <input
+                className="border p-2 rounded md:col-span-2"
+                placeholder="Logo URL"
+                value={settings.logo}
+                onChange={(e) => setSettings({ ...settings, logo: e.target.value })}
+              />
+
+              <label className="flex items-center gap-2 font-bold md:col-span-2">
+                <input
+                  type="checkbox"
+                  checked={settings.gst_enabled}
+                  onChange={(e) =>
+                    setSettings({ ...settings, gst_enabled: e.target.checked })
+                  }
+                />
+                Enable GST for all bills
+              </label>
+            </div>
+
+            <button
+              onClick={saveSettings}
+              className="bg-black text-white px-5 py-2 rounded mt-4"
+            >
+              Save Cafe Details
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div className="bg-white p-5 rounded-xl shadow">
+              Today Sale
+              <br />
+              <b>₹{analytics.todaySale}</b>
+            </div>
+
+            <div className="bg-white p-5 rounded-xl shadow">
+              Last 7 Days
+              <br />
+              <b>₹{analytics.weekSale}</b>
+            </div>
+
+            <div className="bg-white p-5 rounded-xl shadow">
+              This Month
+              <br />
+              <b>₹{analytics.monthSale}</b>
+            </div>
+
+            <div className="bg-white p-5 rounded-xl shadow">
+              Total Sale
+              <br />
+              <b>₹{analytics.totalSale}</b>
+            </div>
+          </div>
+
+          <h3 className="text-xl font-bold mb-3">Item-wise Sales Report</h3>
+
+          <div className="bg-white rounded-xl shadow overflow-auto">
+            <table className="w-full border">
+              <thead>
+                <tr className="bg-gray-200">
+                  <th className="p-2 border">Item</th>
+                  <th className="p-2 border">Qty Sold</th>
+                  <th className="p-2 border">Total Sale</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {analytics.itemWise.map((item: any) => (
+                  <tr key={item.name}>
+                    <td className="p-2 border">{item.name}</td>
+                    <td className="p-2 border">{item.qty}</td>
+                    <td className="p-2 border">₹{item.total}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {tab === "records" && isAdmin && (
+        <div>
+          <h2 className="text-2xl font-bold mb-4">Previous Orders</h2>
+
+          <div className="bg-white p-4 rounded-xl shadow mb-4 flex flex-wrap gap-3">
+            <div>
+              <label className="text-sm font-bold">From Date</label>
+              <input
+                type="date"
+                className="border p-2 rounded block"
+                value={fromDate}
+                onChange={(e) => setFromDate(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="text-sm font-bold">To Date</label>
+              <input
+                type="date"
+                className="border p-2 rounded block"
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value)}
+              />
+            </div>
+
+            <div className="flex items-end">
+              <button
+                onClick={() => {
+                  setFromDate("");
+                  setToDate("");
+                }}
+                className="bg-red-600 text-white px-4 py-2 rounded"
+              >
+                Clear Filter
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div className="bg-white p-4 rounded-xl shadow">
+              Filtered Orders
+              <br />
+              <b>{analytics.filteredCount}</b>
+            </div>
+
+            <div className="bg-white p-4 rounded-xl shadow">
+              Filtered GST
+              <br />
+              <b>₹{analytics.filteredTax}</b>
+            </div>
+
+            <div className="bg-white p-4 rounded-xl shadow">
+              Filtered Total
+              <br />
+              <b>₹{analytics.filteredTotal}</b>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow overflow-auto">
+            <table className="w-full border">
+              <thead>
+                <tr className="bg-gray-200">
+                  <th className="p-2 border">Date</th>
+                  <th className="p-2 border">Staff</th>
+                  <th className="p-2 border">Payment</th>
+                  <th className="p-2 border">Subtotal</th>
+                  <th className="p-2 border">GST</th>
+                  <th className="p-2 border">Total</th>
+                  <th className="p-2 border">Action</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {filteredOrders.map((o) => (
+                  <tr key={o.id}>
+                    <td className="p-2 border">
+                      {new Date(o.created_at).toLocaleString("en-IN")}
+                    </td>
+                    <td className="p-2 border">{o.user_email || "-"}</td>
+                    <td className="p-2 border">{o.payment_by}</td>
+                    <td className="p-2 border">₹{o.subtotal}</td>
+                    <td className="p-2 border">₹{o.tax}</td>
+                    <td className="p-2 border font-bold">₹{o.total}</td>
+                    <td className="p-2 border">
+                      <button
+                        onClick={() => reprintOldBill(o)}
+                        className="bg-blue-600 text-white px-3 py-1 rounded"
+                      >
+                        Reprint
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
