@@ -70,7 +70,9 @@ const [closingNote, setClosingNote] = useState("");
 
   const [customerTableSlug, setCustomerTableSlug] = useState("");
   const [customerTable, setCustomerTable] = useState<any>(null);
-
+const [selectedCustomerOrderId, setSelectedCustomerOrderId] = useState("");
+const [selectedProductIdForOrder, setSelectedProductIdForOrder] = useState("");
+const [extraPaymentNote, setExtraPaymentNote] = useState("");
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tableSlug = params.get("table");
@@ -619,6 +621,9 @@ async function saveDailyClosingReport() {
         subtotal: customerSubtotal,
         tax: customerTax,
         total: customerTotal,
+        original_paid_amount: customerTotal,
+        extra_due: 0,
+        extra_payment_note: "",
       })
       .select()
       .single();
@@ -749,7 +754,56 @@ async function updateCustomerOrderItemQty(order: any, item: any, newQty: number)
   await recalculateCustomerOrderTotal(order.id);
   loadData(profile?.role === "admin");
 }
+async function addProductToCustomerOrder(order: any) {
+  if (!selectedProductIdForOrder) {
+    return alert("Product select karo");
+  }
 
+  if (order.order_status === "completed" || order.order_status === "cancelled") {
+    return alert("Completed ya cancelled order me product add nahi ho sakta");
+  }
+
+  if (order.locked) {
+    return alert("Locked order me product add nahi ho sakta");
+  }
+
+  const product = products.find((p) => p.id === selectedProductIdForOrder);
+
+  if (!product) return alert("Product nahi mila");
+
+  const existingItem = customerOrderItems.find(
+    (item) =>
+      item.customer_order_id === order.id &&
+      item.product_id === product.id
+  );
+
+  if (existingItem) {
+    await updateCustomerOrderItemQty(
+      order,
+      existingItem,
+      Number(existingItem.qty) + 1
+    );
+  } else {
+    const { error } = await supabase
+      .from("customer_order_items")
+      .insert({
+        customer_order_id: order.id,
+        product_id: product.id,
+        product_name: product.name,
+        price: Number(product.price),
+        qty: 1,
+        total: Number(product.price),
+      });
+
+    if (error) return alert(error.message);
+
+    await recalculateCustomerOrderTotal(order.id);
+    loadData(profile?.role === "admin");
+  }
+
+  setSelectedProductIdForOrder("");
+  alert("Product added to customer order");
+}
 async function recalculateCustomerOrderTotal(customerOrderId: string) {
   const { data: items, error } = await supabase
     .from("customer_order_items")
@@ -765,14 +819,25 @@ async function recalculateCustomerOrderTotal(customerOrderId: string) {
 
   const tax = settings.gst_enabled ? Math.round(subtotal * 0.05) : 0;
   const total = subtotal + tax;
+const { data: currentOrder } = await supabase
+  .from("customer_orders")
+  .select("*")
+  .eq("id", customerOrderId)
+  .single();
 
+const originalPaid = Number(currentOrder?.original_paid_amount || 0);
+
+const extraDue = Math.max(0, total - originalPaid);
   const { error: updateError } = await supabase
     .from("customer_orders")
-    .update({
-      subtotal,
-      tax,
-      total,
-    })
+  .update({
+  subtotal,
+  tax,
+  total,
+  extra_due: extraDue,
+  last_edited_by: user?.email,
+  last_edited_at: new Date().toISOString(),
+})
     .eq("id", customerOrderId);
 
   if (updateError) return alert(updateError.message);
@@ -1916,8 +1981,11 @@ const isStaff = profile?.role === "staff";
                   <th className="p-2 border">Txn ID</th>
                   <th className="p-2 border">Payment</th>
                   <th className="p-2 border">Order</th>
+                  <th className="p-2 border">Paid</th>
                   <th className="p-2 border">Total</th>
+                  <th className="p-2 border">Due</th>
                   <th className="p-2 border">Items</th>
+                  <th className="p-2 border">Add Product</th>
                   <th className="p-2 border">Action</th>
                 </tr>
               </thead>
@@ -1936,7 +2004,9 @@ const isStaff = profile?.role === "staff";
                       <td className="p-2 border">{order.transaction_id}</td>
                       <td className="p-2 border">{order.payment_status}</td>
                       <td className="p-2 border">{order.order_status}</td>
+                      <td className="p-2 border">₹{order.original_paid_amount || 0}</td>
                       <td className="p-2 border font-bold">₹{order.total}</td>
+                      <td className="p-2 border font-bold text-red-600">₹{order.extra_due || 0}</td>
                       <td className="p-2 border">
   <div className="text-xs font-bold mb-2 text-blue-700">
     {editTimeText(order)}
@@ -1991,6 +2061,47 @@ const isStaff = profile?.role === "staff";
       )}
     </div>
   ))}
+</td>
+<td className="p-2 border">
+  {!order.locked &&
+    order.order_status !== "completed" &&
+    order.order_status !== "cancelled" && (
+      <>
+        <select
+          className="border p-2 rounded w-full mb-2"
+          value={
+            selectedCustomerOrderId === order.id
+              ? selectedProductIdForOrder
+              : ""
+          }
+          onChange={(e) => {
+            setSelectedCustomerOrderId(order.id);
+            setSelectedProductIdForOrder(e.target.value);
+          }}
+        >
+          <option value="">Select Product</option>
+
+          {products.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name} - ₹{p.price}
+            </option>
+          ))}
+        </select>
+
+        <button
+          onClick={() => addProductToCustomerOrder(order)}
+          className="bg-orange-600 text-white px-3 py-1 rounded w-full"
+        >
+          Add Product
+        </button>
+      </>
+    )}
+
+  {order.locked && (
+    <div className="text-xs font-bold text-gray-500">
+      Locked
+    </div>
+  )}
 </td>
 <td className="p-2 border">
   {!order.locked &&
