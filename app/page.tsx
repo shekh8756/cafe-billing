@@ -918,7 +918,7 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
             <div className="lg:col-span-2">
               <h2 className="text-xl font-bold mb-3">Menu</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-2 gap-4">
                 {products.map((p) => {
                   const productType = String(p.type || "").toLowerCase().trim();
                   const isVeg = productType === "veg";
@@ -934,17 +934,47 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
                       <span className={`inline-block text-xs font-bold px-3 py-1 rounded-full mt-1 ${isVeg ? "bg-green-200 text-green-800" : "bg-red-200 text-red-800"}`}>
                         {isVeg ? "Veg" : "Non Veg"}
                       </span>
-                      <br />
-                      <button onClick={() => addToCustomerCart(p)} className="bg-blue-600 text-white px-4 py-2 mt-3 rounded">
-                        Add
-                      </button>
+                      <div className="mt-3">
+  {customerCart.find((i) => i.id === p.id) ? (
+    <div className="flex items-center gap-2">
+      <button
+        onClick={() => decreaseCustomerQty(p.id)}
+        className="bg-red-600 text-white w-9 h-9 rounded-full text-lg font-bold"
+      >
+        -
+      </button>
+
+      <div className="bg-black text-white px-4 py-2 rounded font-bold">
+        {customerCart.find((i) => i.id === p.id)?.qty}
+      </div>
+
+      <button
+        onClick={() => increaseCustomerQty(p.id)}
+        className="bg-green-600 text-white w-9 h-9 rounded-full text-lg font-bold"
+      >
+        +
+      </button>
+
+      <span className="text-green-700 font-bold text-sm">
+        Added ✓
+      </span>
+    </div>
+  ) : (
+    <button
+      onClick={() => addToCustomerCart(p)}
+      className="bg-blue-600 text-white px-5 py-2 rounded-lg font-bold w-full"
+    >
+      Add to Cart
+    </button>
+  )}
+</div>
                     </div>
                   );
                 })}
               </div>
             </div>
 
-            <div className="bg-white p-5 rounded-xl shadow h-fit">
+            <div className="bg-white p-5 rounded-xl shadow h-fit xl:sticky xl:top-5">
               <h2 className="text-xl font-bold mb-3">Your Order</h2>
 
               {customerCart.length === 0 && <p className="text-gray-500">No item added</p>}
