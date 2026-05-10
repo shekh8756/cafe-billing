@@ -596,7 +596,6 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
       filteredTax,
       filteredCount: filteredOrders.length,
       itemWise: Object.values(itemMap),
-      $1
       itemSalesRows,
       userDetails,
     };
@@ -699,7 +698,6 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
           </button>
         )}
 
-        $1
 
         {isAdmin && (
           <button
@@ -1215,9 +1213,9 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
           </div>
         </div>
       )}
-$1
-        <div>
-          <h2 className="text-2xl font-bold mb-4">Previous Orders</h2>
+        {tab === "records" && isAdmin && (
+  <div>
+    <h2 className="text-2xl font-bold mb-4">Previous Orders</h2>
 
           <div className="bg-white p-4 rounded-xl shadow mb-4 flex flex-wrap gap-3">
             <div>
