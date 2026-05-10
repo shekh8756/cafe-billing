@@ -30,6 +30,8 @@ const [closingNote, setClosingNote] = useState("");
   const [editProduct, setEditProduct] = useState<any>(null);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  const [itemHistoryPage, setItemHistoryPage] = useState(1);
+  const itemHistoryPerPage = 10;
 
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<any>(null);
@@ -2494,6 +2496,35 @@ const isStaff = profile?.role === "staff";
                 ))}
               </tbody>
             </table>
+            <div className="flex justify-between items-center p-4">
+  <button
+    disabled={itemHistoryPage === 1}
+    onClick={() => setItemHistoryPage(itemHistoryPage - 1)}
+    className="bg-gray-700 text-white px-4 py-2 rounded disabled:opacity-50"
+  >
+    Previous
+  </button>
+
+  <span className="font-bold">
+    Page {itemHistoryPage} of{" "}
+    {Math.ceil(
+      analytics.itemSalesRows.length / itemHistoryPerPage
+    ) || 1}
+  </span>
+
+  <button
+    disabled={
+      itemHistoryPage >=
+      Math.ceil(
+        analytics.itemSalesRows.length / itemHistoryPerPage
+      )
+    }
+    onClick={() => setItemHistoryPage(itemHistoryPage + 1)}
+    className="bg-gray-700 text-white px-4 py-2 rounded disabled:opacity-50"
+  >
+    Next
+  </button>
+</div>
           </div>
 
           <h3 className="text-xl font-bold mb-3">Item Sale History: Kab, Kisne, Kitna Becha</h3>
@@ -2511,7 +2542,12 @@ const isStaff = profile?.role === "staff";
                 </tr>
               </thead>
               <tbody>
-                {analytics.itemSalesRows.map((row: any) => (
+                analytics.itemSalesRows
+                    .slice(
+                      (itemHistoryPage - 1) * itemHistoryPerPage,
+                        itemHistoryPage * itemHistoryPerPage
+             )
+               .map((row: any) => (
                   <tr key={row.id}>
                     <td className="p-2 border">{new Date(row.date).toLocaleString("en-IN")}</td>
                     <td className="p-2 border font-bold">{row.item}</td>
