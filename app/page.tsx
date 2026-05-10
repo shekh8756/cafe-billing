@@ -670,10 +670,11 @@ async function saveDailyClosingReport() {
   };
 
   if (orderStatus === "accepted") {
-    updateData.locked = true;
-    updateData.accepted_by = user?.email;
-    updateData.accepted_at = new Date().toISOString();
-  }
+  updateData.locked = false;
+  updateData.accepted_by = user?.email;
+  updateData.accepted_at = new Date().toISOString();
+  updateData.edit_until = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+}
 
   if (orderStatus === "cancelled") {
     updateData.locked = true;
@@ -692,8 +693,8 @@ async function saveDailyClosingReport() {
   loadData(profile?.role === "admin");
 }
 function canEditCustomerOrder(order: any) {
-  if (order.locked) return false;
   if (order.order_status === "completed" || order.order_status === "cancelled") return false;
+  if (order.locked) return false;
 
   const editUntil = order.edit_until
     ? new Date(order.edit_until).getTime()
@@ -776,7 +777,35 @@ async function recalculateCustomerOrderTotal(customerOrderId: string) {
   const items = customerOrderItems.filter(
     (item) => item.customer_order_id === customerOrder.id
   );
+const { data: freshOrder } = await supabase
+  .from("customer_orders")
+  .select("*")
+  .eq("id", customerOrder.id)
+  .single();
 
+if (freshOrder?.pos_order_id) {
+  const billItems = customerOrderItems.filter(
+    (item) => item.customer_order_id === customerOrder.id
+  );
+
+  openPrintWindow(
+    billHtml({
+      billNo: String(freshOrder.pos_order_id).slice(0, 8).toUpperCase(),
+      date: new Date(freshOrder.created_at).toLocaleString("en-IN"),
+      payment: "UPI Online",
+      items: billItems,
+      billSubtotal: freshOrder.subtotal,
+      billTax: freshOrder.tax,
+      billTotal: freshOrder.total,
+    })
+  );
+
+  return;
+}
+
+if (freshOrder?.order_status === "completed" && !freshOrder?.pos_order_id) {
+  return alert("Ye order already completed hai. Duplicate save prevent kiya gaya.");
+}
   if (items.length === 0) return alert("Customer order items nahi mile");
 
   // Already POS bill created: only reprint, no duplicate save
@@ -841,17 +870,22 @@ async function recalculateCustomerOrderTotal(customerOrderId: string) {
     return alert(itemError.message);
   }
 
-  await supabase
-    .from("customer_orders")
-    .update({
-      payment_status: "verified",
-      order_status: "completed",
-      locked: true,
-      pos_order_id: order.id,
-      accepted_by: user?.email,
-      accepted_at: new Date().toISOString(),
-    })
-    .eq("id", customerOrder.id);
+const { error: updateOrderError } = await supabase
+  .from("customer_orders")
+  .update({
+    payment_status: "verified",
+    order_status: "completed",
+    locked: true,
+    pos_order_id: order.id,
+    accepted_by: user?.email,
+    accepted_at: new Date().toISOString(),
+  })
+  .eq("id", customerOrder.id);
+
+if (updateOrderError) {
+  setLoading(false);
+  return alert(updateOrderError.message);
+}
 
   setLoading(false);
 
@@ -1994,11 +2028,18 @@ userDetails,
     </button>
   )}
 
-  {order.locked && (
-    <div className="text-xs font-bold text-gray-600 mt-1">
-      Locked
+{order.locked && (
+  <div className="text-xs font-bold text-gray-600 mt-1">
+    Locked
+  </div>
+)}
+
+{!order.locked &&
+  order.order_status === "accepted" && (
+    <div className="text-xs font-bold text-green-700 mt-1">
+      Editable for 10 minutes
     </div>
-  )}
+)}
 </td>
                     </tr>
                   );
