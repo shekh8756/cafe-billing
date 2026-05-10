@@ -13,7 +13,17 @@ export default function CafeBillingApp() {
   const [restaurantTables, setRestaurantTables] = useState<any[]>([]);
   const [customerOrders, setCustomerOrders] = useState<any[]>([]);
   const [customerOrderItems, setCustomerOrderItems] = useState<any[]>([]);
+const [expenses, setExpenses] = useState<any[]>([]);
+const [closingReports, setClosingReports] = useState<any[]>([]);
 
+const [expenseForm, setExpenseForm] = useState({
+  title: "",
+  amount: "",
+  expense_date: new Date().toISOString().slice(0, 10),
+  note: "",
+});
+
+const [closingNote, setClosingNote] = useState("");
   const [tab, setTab] = useState("billing");
   const [paymentBy, setPaymentBy] = useState("Cash");
   const [loading, setLoading] = useState(false);
@@ -217,6 +227,15 @@ export default function CafeBillingApp() {
       .from("customer_order_items")
       .select("*")
       .order("created_at", { ascending: false });
+const { data: expensesData } = await supabase
+  .from("expenses")
+  .select("*")
+  .order("expense_date", { ascending: false });
+
+const { data: closingReportsData } = await supabase
+  .from("daily_closing_reports")
+  .select("*")
+  .order("closing_date", { ascending: false });
 
     const { data: settingsData } = await supabase
       .from("cafe_settings")
@@ -230,7 +249,8 @@ export default function CafeBillingApp() {
     setRestaurantTables(tablesData || []);
     setCustomerOrders(customerOrdersData || []);
     setCustomerOrderItems(customerOrderItemsData || []);
-
+setExpenses(expensesData || []);
+setClosingReports(closingReportsData || []);
     if (settingsData) {
       setSettings({
         cafe_name: settingsData.cafe_name || "Zenkai Kitchen",
@@ -303,7 +323,75 @@ export default function CafeBillingApp() {
     alert("Cafe details saved");
     loadData(true);
   }
+async function addExpense() {
+  if (!expenseForm.title.trim()) return alert("Expense title daalo");
+  if (!expenseForm.amount) return alert("Expense amount daalo");
 
+  const { error } = await supabase.from("expenses").insert({
+    title: expenseForm.title,
+    amount: Number(expenseForm.amount),
+    expense_date: expenseForm.expense_date,
+    note: expenseForm.note,
+  });
+
+  if (error) return alert(error.message);
+
+  setExpenseForm({
+    title: "",
+    amount: "",
+    expense_date: new Date().toISOString().slice(0, 10),
+    note: "",
+  });
+
+  alert("Expense saved");
+  loadData(true);
+}
+
+async function saveDailyClosingReport() {
+  const today = new Date().toISOString().slice(0, 10);
+
+  const todayOrders = orders.filter(
+    (o) => new Date(o.created_at).toISOString().slice(0, 10) === today
+  );
+
+  const cashSale = todayOrders
+    .filter((o) => String(o.payment_by || "").toLowerCase().includes("cash"))
+    .reduce((s, o) => s + Number(o.total || 0), 0);
+
+  const upiSale = todayOrders
+    .filter((o) => String(o.payment_by || "").toLowerCase().includes("upi"))
+    .reduce((s, o) => s + Number(o.total || 0), 0);
+
+  const totalSale = cashSale + upiSale;
+
+  const todayExpenses = expenses.filter(
+    (e) => String(e.expense_date) === today
+  );
+
+  const totalExpense = todayExpenses.reduce(
+    (s, e) => s + Number(e.amount || 0),
+    0
+  );
+
+  const netProfit = totalSale - totalExpense;
+
+  const { error } = await supabase.from("daily_closing_reports").upsert({
+    closing_date: today,
+    cash_sale: cashSale,
+    upi_sale: upiSale,
+    total_sale: totalSale,
+    total_expense: totalExpense,
+    net_profit: netProfit,
+    note: closingNote,
+    created_by: user?.email,
+  });
+
+  if (error) return alert(error.message);
+
+  setClosingNote("");
+  alert("Daily closing report saved");
+  loadData(true);
+}
   async function addProduct() {
     if (!newProduct.name || !newProduct.price) {
       return alert("Product name aur price daalo");
@@ -479,7 +567,7 @@ export default function CafeBillingApp() {
   }
 
   async function createRestaurantTable() {
-    if (!newTableName.trim()) return alert("Table name daalo");
+    if (!newTableName.trim()) return alert("Table Please Enter Your Name");
 
     const slug = newTableName
       .toLowerCase()
@@ -900,9 +988,28 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
       reportItemWise: Object.values(reportItemMap),
       cashTotal,
       upiTotal,
-      userDetails,
+
+      totalExpense: expenses.reduce(
+  (s, e) => s + Number(e.amount || 0),
+  0
+),
+
+filteredExpense: expenses
+  .filter((e) => {
+    if (!fromDate && !toDate) return true;
+
+    const d = new Date(e.expense_date);
+
+    if (fromDate && d < new Date(fromDate)) return false;
+    if (toDate && d > new Date(toDate)) return false;
+
+    return true;
+  })
+  .reduce((s, e) => s + Number(e.amount || 0), 0),
+
+userDetails,
     };
-  }, [orders, orderItems, filteredOrders, profiles]);
+  }, [orders, orderItems, filteredOrders, profiles, expenses, fromDate, toDate]);
 
   if (customerTableSlug) {
     return (
@@ -1685,7 +1792,121 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
       {tab === "reports" && isAdmin && (
         <div>
           <h2 className="text-2xl font-bold mb-4">Reports</h2>
+<div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+  <div className="bg-white p-5 rounded-xl shadow">
+    Total Expense
+    <br />
+    <b>₹{analytics.totalExpense}</b>
+  </div>
 
+  <div className="bg-white p-5 rounded-xl shadow">
+    Filtered Expense
+    <br />
+    <b>₹{analytics.filteredExpense}</b>
+  </div>
+
+  <div className="bg-white p-5 rounded-xl shadow">
+    Net Profit
+    <br />
+    <b>
+      ₹
+      {analytics.filteredTotal -
+        analytics.filteredExpense}
+    </b>
+  </div>
+
+  <div className="bg-white p-5 rounded-xl shadow">
+    Total Sales
+    <br />
+    <b>₹{analytics.filteredTotal}</b>
+  </div>
+</div>
+
+<div className="bg-white p-5 rounded-xl shadow mb-6">
+  <h3 className="text-xl font-bold mb-3">
+    Add Expense
+  </h3>
+
+  <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+    <input
+      className="border p-2 rounded"
+      placeholder="Expense Title"
+      value={expenseForm.title}
+      onChange={(e) =>
+        setExpenseForm({
+          ...expenseForm,
+          title: e.target.value,
+        })
+      }
+    />
+
+    <input
+      type="number"
+      className="border p-2 rounded"
+      placeholder="Amount"
+      value={expenseForm.amount}
+      onChange={(e) =>
+        setExpenseForm({
+          ...expenseForm,
+          amount: e.target.value,
+        })
+      }
+    />
+
+    <input
+      type="date"
+      className="border p-2 rounded"
+      value={expenseForm.expense_date}
+      onChange={(e) =>
+        setExpenseForm({
+          ...expenseForm,
+          expense_date: e.target.value,
+        })
+      }
+    />
+
+    <input
+      className="border p-2 rounded"
+      placeholder="Note"
+      value={expenseForm.note}
+      onChange={(e) =>
+        setExpenseForm({
+          ...expenseForm,
+          note: e.target.value,
+        })
+      }
+    />
+  </div>
+
+  <button
+    onClick={addExpense}
+    className="bg-red-600 text-white px-5 py-2 rounded mt-4"
+  >
+    Save Expense
+  </button>
+</div>
+
+<div className="bg-white p-5 rounded-xl shadow mb-6">
+  <h3 className="text-xl font-bold mb-3">
+    Daily Closing Report
+  </h3>
+
+  <textarea
+    className="w-full border p-3 rounded"
+    placeholder="Closing note..."
+    value={closingNote}
+    onChange={(e) =>
+      setClosingNote(e.target.value)
+    }
+  />
+
+  <button
+    onClick={saveDailyClosingReport}
+    className="bg-black text-white px-5 py-2 rounded mt-4"
+  >
+    Save Daily Closing
+  </button>
+</div>
           <div className="bg-white p-4 rounded-xl shadow mb-4 flex flex-wrap gap-3">
             <div>
               <label className="text-sm font-bold">From Date</label>
@@ -1752,7 +1973,64 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
               <b>₹{analytics.filteredTotal}</b>
             </div>
           </div>
+<h3 className="text-xl font-bold mb-3">Customer Database</h3>
 
+<div className="bg-white rounded-xl shadow overflow-auto mb-6">
+  <table className="w-full border">
+    <thead>
+      <tr className="bg-gray-200">
+        <th className="p-2 border">Customer</th>
+        <th className="p-2 border">Phone</th>
+        <th className="p-2 border">Total Orders</th>
+        <th className="p-2 border">Total Spending</th>
+        <th className="p-2 border">Last Order</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      {Object.values(
+        customerOrders.reduce((acc: any, order: any) => {
+          const key =
+            order.customer_phone ||
+            order.customer_name ||
+            order.id;
+
+          if (!acc[key]) {
+            acc[key] = {
+              name: order.customer_name || "-",
+              phone: order.customer_phone || "-",
+              orders: 0,
+              spending: 0,
+              lastOrder: order.created_at,
+            };
+          }
+
+          acc[key].orders += 1;
+          acc[key].spending += Number(order.total || 0);
+
+          if (
+            new Date(order.created_at) >
+            new Date(acc[key].lastOrder)
+          ) {
+            acc[key].lastOrder = order.created_at;
+          }
+
+          return acc;
+        }, {})
+      ).map((c: any) => (
+        <tr key={c.phone + c.name}>
+          <td className="p-2 border font-bold">{c.name}</td>
+          <td className="p-2 border">{c.phone}</td>
+          <td className="p-2 border">{c.orders}</td>
+          <td className="p-2 border font-bold">₹{c.spending}</td>
+          <td className="p-2 border">
+            {new Date(c.lastOrder).toLocaleString("en-IN")}
+          </td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+</div>
           <h3 className="text-xl font-bold mb-3">User Details & User-wise Sales</h3>
           <div className="bg-white rounded-xl shadow overflow-auto mb-6">
             <table className="w-full border">
