@@ -504,7 +504,7 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
     });
   }, [orders, fromDate, toDate]);
 
-  const analytics = useMemo(() => {
+  const analytics: any = useMemo(() => {
     const now = new Date();
 
     const isToday = (date: string) =>
@@ -540,47 +540,69 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
     const yearOrders = orders.filter((o) => isThisYear(o.created_at));
 
     const itemMap: any = {};
-
     orderItems.forEach((item) => {
       if (!itemMap[item.product_name]) {
-        itemMap[item.product_name] = {
-          name: item.product_name,
-          qty: 0,
-          total: 0,
-        };
+        itemMap[item.product_name] = { name: item.product_name, qty: 0, total: 0 };
       }
-
-      itemMap[item.product_name].qty += Number(item.qty);
-      itemMap[item.product_name].total += Number(item.total);
+      itemMap[item.product_name].qty += Number(item.qty || 0);
+      itemMap[item.product_name].total += Number(item.total || 0);
     });
 
     const filteredTotal = sum(filteredOrders);
     const filteredTax = filteredOrders.reduce((s, o) => s + Number(o.tax || 0), 0);
 
+    const filteredOrderIds = new Set(filteredOrders.map((o) => o.id));
 
-    const itemSalesRows = orderItems.map((item) => {
-      const order = orders.find((o) => o.id === item.order_id);
-      return {
-        id: item.id,
-        item: item.product_name,
-        qty: Number(item.qty || 0),
-        price: Number(item.price || 0),
-        total: Number(item.total || 0),
-        date: order?.created_at || item.created_at,
-        payment: order?.payment_by || "-",
-        staff: order?.user_email || "-",
-      };
+    const itemSalesRows = orderItems
+      .map((item) => {
+        const order = orders.find((o) => o.id === item.order_id);
+        return {
+          id: item.id,
+          item: item.product_name,
+          qty: Number(item.qty || 0),
+          price: Number(item.price || 0),
+          total: Number(item.total || 0),
+          date: order?.created_at || item.created_at,
+          payment: order?.payment_by || "-",
+          staff: order?.user_email || "-",
+          order_id: item.order_id,
+        };
+      })
+      .filter((row) => filteredOrderIds.has(row.order_id));
+
+    const reportItemMap: any = {};
+    itemSalesRows.forEach((item) => {
+      if (!reportItemMap[item.item]) {
+        reportItemMap[item.item] = { name: item.item, qty: 0, total: 0 };
+      }
+      reportItemMap[item.item].qty += Number(item.qty || 0);
+      reportItemMap[item.item].total += Number(item.total || 0);
     });
+
+    const cashTotal = filteredOrders
+      .filter((o) => String(o.payment_by || "").toLowerCase().includes("cash"))
+      .reduce((s, o) => s + Number(o.total || 0), 0);
+
+    const upiTotal = filteredOrders
+      .filter((o) => String(o.payment_by || "").toLowerCase().includes("upi"))
+      .reduce((s, o) => s + Number(o.total || 0), 0);
 
     const userDetails = profiles
       .filter((p) => p.role !== "admin")
       .map((staff) => {
-        const staffOrders = orders.filter((o) => o.user_id === staff.id || o.user_email === staff.email);
+        const staffOrders = filteredOrders.filter((o) => o.user_id === staff.id || o.user_email === staff.email);
         const staffItems = itemSalesRows.filter((row) => row.staff === staff.email);
         return {
           ...staff,
+          name: staff.full_name || staff.email,
           orderCount: staffOrders.length,
           itemQty: staffItems.reduce((s, i) => s + Number(i.qty || 0), 0),
+          today: sum(staffOrders.filter((o) => isToday(o.created_at))),
+          yesterday: sum(staffOrders.filter((o) => isYesterday(o.created_at))),
+          week: sum(staffOrders.filter((o) => isLast7Days(o.created_at))),
+          month: sum(staffOrders.filter((o) => isThisMonth(o.created_at))),
+          year: sum(staffOrders.filter((o) => isThisYear(o.created_at))),
+          total: sum(staffOrders),
           totalSale: sum(staffOrders),
         };
       });
@@ -598,6 +620,9 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
       itemWise: Object.values(itemMap),
       staffSales: userDetails,
       itemSalesRows,
+      reportItemWise: Object.values(reportItemMap),
+      cashTotal,
+      upiTotal,
       userDetails,
     };
   }, [orders, orderItems, filteredOrders, profiles]);
@@ -699,15 +724,23 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
           </button>
         )}
 
+        {isAdmin && (
+          <button
+            onClick={() => setTab("records")}
+            className="bg-green-600 text-white px-4 py-2 rounded"
+          >
+            Previous Records
+          </button>
+        )}
 
         {isAdmin && (
-  <button
-    onClick={() => setTab("reports")}
-    className="bg-purple-600 text-white px-4 py-2 rounded"
-  >
-    Reports
-  </button>
-)}
+          <button
+            onClick={() => setTab("reports")}
+            className="bg-purple-600 text-white px-4 py-2 rounded"
+          >
+            Reports
+          </button>
+        )}
       </div>
 
       {tab === "billing" && (
@@ -1110,16 +1143,50 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
         <div>
           <h2 className="text-2xl font-bold mb-4">Reports</h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          <div className="bg-white p-4 rounded-xl shadow mb-4 flex flex-wrap gap-3">
+            <div>
+              <label className="text-sm font-bold">From Date</label>
+              <input
+                type="date"
+                className="border p-2 rounded block"
+                value={fromDate}
+                onChange={(e) => setFromDate(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="text-sm font-bold">To Date</label>
+              <input
+                type="date"
+                className="border p-2 rounded block"
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value)}
+              />
+            </div>
+
+            <div className="flex items-end">
+              <button
+                onClick={() => {
+                  setFromDate("");
+                  setToDate("");
+                }}
+                className="bg-red-600 text-white px-4 py-2 rounded"
+              >
+                Clear Filter
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-4 mb-6">
             <div className="bg-white p-5 rounded-xl shadow">
               Total Staff
               <br />
               <b>{analytics.userDetails.length}</b>
             </div>
             <div className="bg-white p-5 rounded-xl shadow">
-              Total Orders
+              Filtered Orders
               <br />
-              <b>{orders.length}</b>
+              <b>{analytics.filteredCount}</b>
             </div>
             <div className="bg-white p-5 rounded-xl shadow">
               Total Items Sold
@@ -1127,9 +1194,19 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
               <b>{analytics.itemSalesRows.reduce((s: number, i: any) => s + Number(i.qty || 0), 0)}</b>
             </div>
             <div className="bg-white p-5 rounded-xl shadow">
-              Total Sale
+              Cash Sale
               <br />
-              <b>₹{analytics.totalSale}</b>
+              <b>₹{analytics.cashTotal}</b>
+            </div>
+            <div className="bg-white p-5 rounded-xl shadow">
+              UPI Sale
+              <br />
+              <b>₹{analytics.upiTotal}</b>
+            </div>
+            <div className="bg-white p-5 rounded-xl shadow">
+              Filtered Total
+              <br />
+              <b>₹{analytics.filteredTotal}</b>
             </div>
           </div>
 
@@ -1143,6 +1220,9 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
                   <th className="p-2 border">Status</th>
                   <th className="p-2 border">Orders</th>
                   <th className="p-2 border">Items Sold</th>
+                  <th className="p-2 border">Today</th>
+                  <th className="p-2 border">Week</th>
+                  <th className="p-2 border">Month</th>
                   <th className="p-2 border">Total Sale</th>
                 </tr>
               </thead>
@@ -1154,6 +1234,9 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
                     <td className="p-2 border">{u.approved ? "Approved" : u.status || "Pending"}</td>
                     <td className="p-2 border">{u.orderCount}</td>
                     <td className="p-2 border">{u.itemQty}</td>
+                    <td className="p-2 border">₹{u.today}</td>
+                    <td className="p-2 border">₹{u.week}</td>
+                    <td className="p-2 border">₹{u.month}</td>
                     <td className="p-2 border font-bold">₹{u.totalSale}</td>
                   </tr>
                 ))}
@@ -1172,7 +1255,7 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
                 </tr>
               </thead>
               <tbody>
-                {analytics.itemWise.map((item: any) => (
+                {analytics.reportItemWise.map((item: any) => (
                   <tr key={item.name}>
                     <td className="p-2 border">{item.name}</td>
                     <td className="p-2 border">{item.qty}</td>
@@ -1214,9 +1297,10 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
           </div>
         </div>
       )}
-        {tab === "records" && isAdmin && (
-  <div>
-    <h2 className="text-2xl font-bold mb-4">Previous Orders</h2>
+
+      {tab === "records" && isAdmin && (
+        <div>
+          <h2 className="text-2xl font-bold mb-4">Previous Orders</h2>
 
           <div className="bg-white p-4 rounded-xl shadow mb-4 flex flex-wrap gap-3">
             <div>
@@ -1252,7 +1336,7 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
             <div className="bg-white p-4 rounded-xl shadow">
               Filtered Orders
               <br />
@@ -1263,6 +1347,18 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
               Filtered GST
               <br />
               <b>₹{analytics.filteredTax}</b>
+            </div>
+
+            <div className="bg-white p-4 rounded-xl shadow">
+              Cash Sale
+              <br />
+              <b>₹{analytics.cashTotal}</b>
+            </div>
+
+            <div className="bg-white p-4 rounded-xl shadow">
+              UPI Sale
+              <br />
+              <b>₹{analytics.upiTotal}</b>
             </div>
 
             <div className="bg-white p-4 rounded-xl shadow">
