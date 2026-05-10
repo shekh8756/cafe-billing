@@ -650,80 +650,226 @@ async function saveDailyClosingReport() {
     alert("Order submitted. Staff payment verify karke accept karega.");
   }
 
-  async function updateCustomerOrderStatus(order: any, paymentStatus: string, orderStatus: string) {
-    const { error } = await supabase
-      .from("customer_orders")
-      .update({ payment_status: paymentStatus, order_status: orderStatus })
-      .eq("id", order.id);
-
-    if (error) return alert(error.message);
-
-    alert("Order updated");
-    loadData(profile?.role === "admin");
+  async function updateCustomerOrderStatus(
+  order: any,
+  paymentStatus: string,
+  orderStatus: string
+) {
+  if (order.locked || order.order_status === "completed" || order.order_status === "cancelled") {
+    return alert("Ye order already locked hai. Ab isme change nahi ho sakta.");
   }
 
-  async function convertCustomerOrderToBill(customerOrder: any) {
-    const items = customerOrderItems.filter((item) => item.customer_order_id === customerOrder.id);
+  if (orderStatus === "cancelled") {
+    const ok = confirm("Are you sure? Is customer order ko reject/cancel karna hai?");
+    if (!ok) return;
+  }
 
-    if (items.length === 0) return alert("Customer order items nahi mile");
+  const updateData: any = {
+    payment_status: paymentStatus,
+    order_status: orderStatus,
+  };
 
-    setLoading(true);
+  if (orderStatus === "accepted") {
+    updateData.locked = true;
+    updateData.accepted_by = user?.email;
+    updateData.accepted_at = new Date().toISOString();
+  }
 
-    const { data: order, error: orderError } = await supabase
-      .from("orders")
-      .insert({
-        subtotal: Number(customerOrder.subtotal || 0),
-        tax: Number(customerOrder.tax || 0),
-        total: Number(customerOrder.total || 0),
-        payment_by: "UPI Online",
-        user_id: user?.id,
-        user_email: user?.email,
+  if (orderStatus === "cancelled") {
+    updateData.locked = true;
+    updateData.rejected_by = user?.email;
+    updateData.rejected_at = new Date().toISOString();
+  }
+
+  const { error } = await supabase
+    .from("customer_orders")
+    .update(updateData)
+    .eq("id", order.id);
+
+  if (error) return alert(error.message);
+
+  alert("Order updated");
+  loadData(profile?.role === "admin");
+}
+function canEditCustomerOrder(order: any) {
+  if (order.locked) return false;
+  if (order.order_status === "completed" || order.order_status === "cancelled") return false;
+
+  const editUntil = order.edit_until
+    ? new Date(order.edit_until).getTime()
+    : new Date(order.created_at).getTime() + 10 * 60 * 1000;
+
+  return Date.now() <= editUntil;
+}
+
+function editTimeText(order: any) {
+  if (order.locked) return "Locked";
+
+  const editUntil = order.edit_until
+    ? new Date(order.edit_until).getTime()
+    : new Date(order.created_at).getTime() + 10 * 60 * 1000;
+
+  const left = Math.max(0, editUntil - Date.now());
+  const minutes = Math.floor(left / 60000);
+  const seconds = Math.floor((left % 60000) / 1000);
+
+  if (left <= 0) return "Edit time over";
+
+  return `${minutes}m ${seconds}s left`;
+}
+async function updateCustomerOrderItemQty(order: any, item: any, newQty: number) {
+  if (!canEditCustomerOrder(order)) {
+    return alert("Edit time over ho gaya ya order locked hai");
+  }
+
+  if (newQty <= 0) {
+    const { error } = await supabase
+      .from("customer_order_items")
+      .delete()
+      .eq("id", item.id);
+
+    if (error) return alert(error.message);
+  } else {
+    const { error } = await supabase
+      .from("customer_order_items")
+      .update({
+        qty: newQty,
+        total: Number(item.price) * newQty,
       })
-      .select()
-      .single();
+      .eq("id", item.id);
 
-    if (orderError) {
-      setLoading(false);
-      return alert(orderError.message);
-    }
+    if (error) return alert(error.message);
+  }
 
-    const posItems = items.map((item) => ({
-      order_id: order.id,
-      product_name: item.product_name,
-      price: Number(item.price),
-      qty: Number(item.qty),
-      total: Number(item.total),
-    }));
+  await recalculateCustomerOrderTotal(order.id);
+  loadData(profile?.role === "admin");
+}
 
-    const { error: itemError } = await supabase.from("order_items").insert(posItems);
+async function recalculateCustomerOrderTotal(customerOrderId: string) {
+  const { data: items, error } = await supabase
+    .from("customer_order_items")
+    .select("*")
+    .eq("customer_order_id", customerOrderId);
 
-    if (itemError) {
-      setLoading(false);
-      return alert(itemError.message);
-    }
+  if (error) return alert(error.message);
 
-    await supabase
-      .from("customer_orders")
-      .update({ payment_status: "verified", order_status: "completed" })
-      .eq("id", customerOrder.id);
+  const subtotal = (items || []).reduce(
+    (s, item) => s + Number(item.total || 0),
+    0
+  );
 
-    setLoading(false);
+  const tax = settings.gst_enabled ? Math.round(subtotal * 0.05) : 0;
+  const total = subtotal + tax;
+
+  const { error: updateError } = await supabase
+    .from("customer_orders")
+    .update({
+      subtotal,
+      tax,
+      total,
+    })
+    .eq("id", customerOrderId);
+
+  if (updateError) return alert(updateError.message);
+}
+  async function convertCustomerOrderToBill(customerOrder: any) {
+  const items = customerOrderItems.filter(
+    (item) => item.customer_order_id === customerOrder.id
+  );
+
+  if (items.length === 0) return alert("Customer order items nahi mile");
+
+  // Already POS bill created: only reprint, no duplicate save
+  if (customerOrder.pos_order_id) {
+    const oldOrder = orders.find((o) => o.id === customerOrder.pos_order_id);
 
     openPrintWindow(
       billHtml({
-        billNo: order.id.slice(0, 8).toUpperCase(),
-        date: new Date().toLocaleString("en-IN"),
+        billNo: String(customerOrder.pos_order_id).slice(0, 8).toUpperCase(),
+        date: oldOrder?.created_at
+          ? new Date(oldOrder.created_at).toLocaleString("en-IN")
+          : new Date(customerOrder.created_at).toLocaleString("en-IN"),
         payment: "UPI Online",
-        items: posItems,
+        items,
         billSubtotal: customerOrder.subtotal,
         billTax: customerOrder.tax,
         billTotal: customerOrder.total,
       })
     );
 
-    alert("Customer order POS bill me convert ho gaya");
-    loadData(profile?.role === "admin");
+    return;
   }
+
+  if (customerOrder.order_status === "cancelled") {
+    return alert("Rejected order ko bill me convert nahi kar sakte");
+  }
+
+  setLoading(true);
+
+  const { data: order, error: orderError } = await supabase
+    .from("orders")
+    .insert({
+      subtotal: Number(customerOrder.subtotal || 0),
+      tax: Number(customerOrder.tax || 0),
+      total: Number(customerOrder.total || 0),
+      payment_by: "UPI Online",
+      user_id: user?.id,
+      user_email: user?.email,
+    })
+    .select()
+    .single();
+
+  if (orderError) {
+    setLoading(false);
+    return alert(orderError.message);
+  }
+
+  const posItems = items.map((item) => ({
+    order_id: order.id,
+    product_name: item.product_name,
+    price: Number(item.price),
+    qty: Number(item.qty),
+    total: Number(item.total),
+  }));
+
+  const { error: itemError } = await supabase
+    .from("order_items")
+    .insert(posItems);
+
+  if (itemError) {
+    setLoading(false);
+    return alert(itemError.message);
+  }
+
+  await supabase
+    .from("customer_orders")
+    .update({
+      payment_status: "verified",
+      order_status: "completed",
+      locked: true,
+      pos_order_id: order.id,
+      accepted_by: user?.email,
+      accepted_at: new Date().toISOString(),
+    })
+    .eq("id", customerOrder.id);
+
+  setLoading(false);
+
+  openPrintWindow(
+    billHtml({
+      billNo: order.id.slice(0, 8).toUpperCase(),
+      date: new Date().toLocaleString("en-IN"),
+      payment: "UPI Online",
+      items: posItems,
+      billSubtotal: customerOrder.subtotal,
+      billTax: customerOrder.tax,
+      billTotal: customerOrder.total,
+    })
+  );
+
+  alert("Customer order POS bill me convert ho gaya");
+  loadData(profile?.role === "admin");
+}
 
   function billHtml({
     billNo,
@@ -1754,32 +1900,106 @@ userDetails,
                       <td className="p-2 border">{order.order_status}</td>
                       <td className="p-2 border font-bold">₹{order.total}</td>
                       <td className="p-2 border">
-                        {items.map((item) => (
-                          <div key={item.id} className="text-sm">
-                            {item.product_name} x {item.qty} = ₹{item.total}
-                          </div>
-                        ))}
-                      </td>
-                      <td className="p-2 border">
-                        <button
-                          onClick={() => updateCustomerOrderStatus(order, "verified", "accepted")}
-                          className="bg-green-600 text-white px-3 py-1 rounded mr-2 mb-1"
-                        >
-                          Verify
-                        </button>
-                        <button
-                          onClick={() => convertCustomerOrderToBill(order)}
-                          className="bg-blue-600 text-white px-3 py-1 rounded mr-2 mb-1"
-                        >
-                          Save & Print
-                        </button>
-                        <button
-                          onClick={() => updateCustomerOrderStatus(order, "rejected", "cancelled")}
-                          className="bg-red-600 text-white px-3 py-1 rounded mb-1"
-                        >
-                          Reject
-                        </button>
-                      </td>
+  <div className="text-xs font-bold mb-2 text-blue-700">
+    {editTimeText(order)}
+  </div>
+
+  {items.map((item) => (
+    <div key={item.id} className="text-sm mb-2 border-b pb-1">
+      <div>
+        {item.product_name} x {item.qty} = ₹{item.total}
+      </div>
+
+      {canEditCustomerOrder(order) && (
+        <div className="flex gap-2 mt-1">
+          <button
+            onClick={() =>
+              updateCustomerOrderItemQty(
+                order,
+                item,
+                Number(item.qty) - 1
+              )
+            }
+            className="bg-red-600 text-white px-2 rounded"
+          >
+            -
+          </button>
+
+          <button
+            onClick={() =>
+              updateCustomerOrderItemQty(
+                order,
+                item,
+                Number(item.qty) + 1
+              )
+            }
+            className="bg-green-600 text-white px-2 rounded"
+          >
+            +
+          </button>
+
+          <button
+            onClick={() =>
+              updateCustomerOrderItemQty(order, item, 0)
+            }
+            className="bg-gray-700 text-white px-2 rounded"
+          >
+            Remove
+          </button>
+        </div>
+      )}
+    </div>
+  ))}
+</td>
+<td className="p-2 border">
+  {!order.locked &&
+    order.order_status !== "completed" &&
+    order.order_status !== "cancelled" && (
+      <>
+        <button
+          onClick={() =>
+            updateCustomerOrderStatus(
+              order,
+              "verified",
+              "accepted"
+            )
+          }
+          className="bg-green-600 text-white px-3 py-1 rounded mr-2 mb-1"
+        >
+          Accept
+        </button>
+
+        <button
+          onClick={() =>
+            updateCustomerOrderStatus(
+              order,
+              "rejected",
+              "cancelled"
+            )
+          }
+          className="bg-red-600 text-white px-3 py-1 rounded mb-1"
+        >
+          Reject
+        </button>
+      </>
+    )}
+
+  {(order.order_status === "accepted" ||
+    order.order_status === "completed") && (
+    <button
+      onClick={() => convertCustomerOrderToBill(order)}
+      className="bg-blue-600 text-white px-3 py-1 rounded mr-2 mb-1"
+    >
+      {order.pos_order_id ? "Reprint Bill" : "Save & Print"}
+    </button>
+  )}
+
+  {order.locked && (
+    <div className="text-xs font-bold text-gray-600 mt-1">
+      Locked
+    </div>
+  )}
+</td>
                     </tr>
                   );
                 })}
