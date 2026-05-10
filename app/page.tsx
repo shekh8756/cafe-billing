@@ -2542,12 +2542,12 @@ const isStaff = profile?.role === "staff";
                 </tr>
               </thead>
               <tbody>
-                analytics.itemSalesRows
-                    .slice(
-                      (itemHistoryPage - 1) * itemHistoryPerPage,
-                        itemHistoryPage * itemHistoryPerPage
-             )
-               .map((row: any) => (
+  {analytics.itemSalesRows
+    .slice(
+      (itemHistoryPage - 1) * itemHistoryPerPage,
+      itemHistoryPage * itemHistoryPerPage
+    )
+    .map((row: any) => (
                   <tr key={row.id}>
                     <td className="p-2 border">{new Date(row.date).toLocaleString("en-IN")}</td>
                     <td className="p-2 border font-bold">{row.item}</td>
