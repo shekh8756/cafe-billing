@@ -679,39 +679,70 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
             <h2 className="text-xl font-bold mb-3">Menu</h2>
 
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {products.map((p) => (
-                <div key={p.id} className="bg-white p-4 rounded-xl shadow">
-                  <img src={p.image} className="h-32 w-full object-cover rounded" alt={p.name} />
-                  <h3 className="font-bold mt-2">{p.name}</h3>
-                  <p>₹{p.price}</p>
-                  <p className="text-sm">{p.type}</p>
+              {products.map((p) => {
+                const productType = String(p.type || "").toLowerCase().trim();
+                const isVeg = productType === "veg";
 
-                  <button
-                    onClick={() => addToCart(p)}
-                    className="bg-blue-600 text-white px-4 py-2 mt-2 rounded"
+                return (
+                  <div
+                    key={p.id}
+                    className={`p-4 rounded-xl shadow border transition ${
+                      isVeg
+                        ? "bg-green-50 border-green-300"
+                        : "bg-red-50 border-red-300"
+                    }`}
                   >
-                    Add
-                  </button>
+                    <img
+                      src={p.image}
+                      className="h-32 w-full object-cover rounded"
+                      alt={p.name}
+                    />
 
-                  {isAdmin && (
-                    <div className="flex gap-2 mt-2">
-                      <button
-                        onClick={() => startEditProduct(p)}
-                        className="bg-yellow-500 text-white px-3 py-1 rounded text-sm"
-                      >
-                        Edit
-                      </button>
+                    <h3 className="font-bold mt-2">{p.name}</h3>
 
-                      <button
-                        onClick={() => deleteProduct(p.id)}
-                        className="bg-red-600 text-white px-3 py-1 rounded text-sm"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))}
+                    <p className={isVeg ? "text-green-700 font-bold" : "text-red-700 font-bold"}>
+                      ₹{p.price}
+                    </p>
+
+                    <span
+                      className={`inline-block text-xs font-bold px-3 py-1 rounded-full mt-1 ${
+                        isVeg
+                          ? "bg-green-200 text-green-800"
+                          : "bg-red-200 text-red-800"
+                      }`}
+                    >
+                      {isVeg ? "Veg" : "Non Veg"}
+                    </span>
+
+                    <br />
+
+                    <button
+                      onClick={() => addToCart(p)}
+                      className="bg-blue-600 text-white px-4 py-2 mt-2 rounded"
+                    >
+                      Add
+                    </button>
+
+                    {isAdmin && (
+                      <div className="flex gap-2 mt-2">
+                        <button
+                          onClick={() => startEditProduct(p)}
+                          className="bg-yellow-500 text-white px-3 py-1 rounded text-sm"
+                        >
+                          Edit
+                        </button>
+
+                        <button
+                          onClick={() => deleteProduct(p.id)}
+                          className="bg-red-600 text-white px-3 py-1 rounded text-sm"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -780,7 +811,6 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
             >
               {loading ? "Saving..." : "Save Order & Print"}
             </button>
-
           </div>
         </div>
       )}
