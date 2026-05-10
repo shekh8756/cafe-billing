@@ -557,23 +557,32 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
     const filteredTotal = sum(filteredOrders);
     const filteredTax = filteredOrders.reduce((s, o) => s + Number(o.tax || 0), 0);
 
-    const staffSales = profiles
+    $1
+
+    const itemSalesRows = orderItems.map((item) => {
+      const order = orders.find((o) => o.id === item.order_id);
+      return {
+        id: item.id,
+        item: item.product_name,
+        qty: Number(item.qty || 0),
+        price: Number(item.price || 0),
+        total: Number(item.total || 0),
+        date: order?.created_at || item.created_at,
+        payment: order?.payment_by || "-",
+        staff: order?.user_email || "-",
+      };
+    });
+
+    const userDetails = profiles
       .filter((p) => p.role !== "admin")
       .map((staff) => {
         const staffOrders = orders.filter((o) => o.user_id === staff.id || o.user_email === staff.email);
+        const staffItems = itemSalesRows.filter((row) => row.staff === staff.email);
         return {
-          id: staff.id,
-          name: staff.full_name || staff.email,
-          email: staff.email,
-          status: staff.status,
-          approved: staff.approved,
-          today: sum(staffOrders.filter((o) => isToday(o.created_at))),
-          yesterday: sum(staffOrders.filter((o) => isYesterday(o.created_at))),
-          week: sum(staffOrders.filter((o) => isLast7Days(o.created_at))),
-          month: sum(staffOrders.filter((o) => isThisMonth(o.created_at))),
-          year: sum(staffOrders.filter((o) => isThisYear(o.created_at))),
-          total: sum(staffOrders),
-          orders: staffOrders.length,
+          ...staff,
+          orderCount: staffOrders.length,
+          itemQty: staffItems.reduce((s, i) => s + Number(i.qty || 0), 0),
+          totalSale: sum(staffOrders),
         };
       });
 
@@ -588,7 +597,9 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
       filteredTax,
       filteredCount: filteredOrders.length,
       itemWise: Object.values(itemMap),
-      staffSales,
+      $1
+      itemSalesRows,
+      userDetails,
     };
   }, [orders, orderItems, filteredOrders, profiles]);
 
@@ -689,14 +700,16 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
           </button>
         )}
 
+        $1
+
         {isAdmin && (
           <button
-            onClick={() => setTab("records")}
-            className="bg-green-600 text-white px-4 py-2 rounded"
+            onClick={() => setTab("reports")}
+            className="bg-purple-600 text-white px-4 py-2 rounded"
           >
-            Previous Records
+            Reports
           </button>
-        )}
+        )
       </div>
 
       {tab === "billing" && (
@@ -1095,7 +1108,115 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
         </div>
       )}
 
-      {tab === "records" && isAdmin && (
+      {tab === "reports" && isAdmin && (
+        <div>
+          <h2 className="text-2xl font-bold mb-4">Reports</h2>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div className="bg-white p-5 rounded-xl shadow">
+              Total Staff
+              <br />
+              <b>{analytics.userDetails.length}</b>
+            </div>
+            <div className="bg-white p-5 rounded-xl shadow">
+              Total Orders
+              <br />
+              <b>{orders.length}</b>
+            </div>
+            <div className="bg-white p-5 rounded-xl shadow">
+              Total Items Sold
+              <br />
+              <b>{analytics.itemSalesRows.reduce((s: number, i: any) => s + Number(i.qty || 0), 0)}</b>
+            </div>
+            <div className="bg-white p-5 rounded-xl shadow">
+              Total Sale
+              <br />
+              <b>₹{analytics.totalSale}</b>
+            </div>
+          </div>
+
+          <h3 className="text-xl font-bold mb-3">User Details & User-wise Sales</h3>
+          <div className="bg-white rounded-xl shadow overflow-auto mb-6">
+            <table className="w-full border">
+              <thead>
+                <tr className="bg-gray-200">
+                  <th className="p-2 border">User</th>
+                  <th className="p-2 border">Email</th>
+                  <th className="p-2 border">Status</th>
+                  <th className="p-2 border">Orders</th>
+                  <th className="p-2 border">Items Sold</th>
+                  <th className="p-2 border">Total Sale</th>
+                </tr>
+              </thead>
+              <tbody>
+                {analytics.userDetails.map((u: any) => (
+                  <tr key={u.id}>
+                    <td className="p-2 border font-bold">{u.full_name || u.email}</td>
+                    <td className="p-2 border">{u.email}</td>
+                    <td className="p-2 border">{u.approved ? "Approved" : u.status || "Pending"}</td>
+                    <td className="p-2 border">{u.orderCount}</td>
+                    <td className="p-2 border">{u.itemQty}</td>
+                    <td className="p-2 border font-bold">₹{u.totalSale}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <h3 className="text-xl font-bold mb-3">Item-wise Sales Report</h3>
+          <div className="bg-white rounded-xl shadow overflow-auto mb-6">
+            <table className="w-full border">
+              <thead>
+                <tr className="bg-gray-200">
+                  <th className="p-2 border">Item</th>
+                  <th className="p-2 border">Total Qty Sold</th>
+                  <th className="p-2 border">Total Sale</th>
+                </tr>
+              </thead>
+              <tbody>
+                {analytics.itemWise.map((item: any) => (
+                  <tr key={item.name}>
+                    <td className="p-2 border">{item.name}</td>
+                    <td className="p-2 border">{item.qty}</td>
+                    <td className="p-2 border font-bold">₹{item.total}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <h3 className="text-xl font-bold mb-3">Item Sale History: Kab, Kisne, Kitna Becha</h3>
+          <div className="bg-white rounded-xl shadow overflow-auto">
+            <table className="w-full border">
+              <thead>
+                <tr className="bg-gray-200">
+                  <th className="p-2 border">Date / Time</th>
+                  <th className="p-2 border">Item</th>
+                  <th className="p-2 border">Qty</th>
+                  <th className="p-2 border">Price</th>
+                  <th className="p-2 border">Total</th>
+                  <th className="p-2 border">Staff</th>
+                  <th className="p-2 border">Payment</th>
+                </tr>
+              </thead>
+              <tbody>
+                {analytics.itemSalesRows.map((row: any) => (
+                  <tr key={row.id}>
+                    <td className="p-2 border">{new Date(row.date).toLocaleString("en-IN")}</td>
+                    <td className="p-2 border font-bold">{row.item}</td>
+                    <td className="p-2 border">{row.qty}</td>
+                    <td className="p-2 border">₹{row.price}</td>
+                    <td className="p-2 border font-bold">₹{row.total}</td>
+                    <td className="p-2 border">{row.staff}</td>
+                    <td className="p-2 border">{row.payment}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+$1
         <div>
           <h2 className="text-2xl font-bold mb-4">Previous Orders</h2>
 
