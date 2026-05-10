@@ -693,6 +693,7 @@ async function saveDailyClosingReport() {
   loadData(profile?.role === "admin");
 }
 function canEditCustomerOrder(order: any) {
+  if (!isAdmin) return false;
   if (order.order_status === "completed" || order.order_status === "cancelled") return false;
   if (order.locked) return false;
 
@@ -719,6 +720,9 @@ function editTimeText(order: any) {
   return `${minutes}m ${seconds}s left`;
 }
 async function updateCustomerOrderItemQty(order: any, item: any, newQty: number) {
+  if (isStaff && newQty < Number(item.qty)) {
+  return alert("Staff item remove ya decrease nahi kar sakta");
+}
   if (!canEditCustomerOrder(order)) {
     return alert("Edit time over ho gaya ya order locked hai");
   }
@@ -1387,7 +1391,7 @@ userDetails,
   }
 
   const isAdmin = profile?.role === "admin";
-
+const isStaff = profile?.role === "staff";
   return (
     <div className="min-h-screen bg-gray-100 p-5 text-black">
       <div className="flex justify-between items-center mb-5">
@@ -1944,7 +1948,10 @@ userDetails,
         {item.product_name} x {item.qty} = ₹{item.total}
       </div>
 
-      {canEditCustomerOrder(order) && (
+      {(canEditCustomerOrder(order) || isStaff) &&
+  order.order_status !== "completed" &&
+  order.order_status !== "cancelled" &&
+  !order.locked && (
         <div className="flex gap-2 mt-1">
           <button
             onClick={() =>
@@ -2003,18 +2010,20 @@ userDetails,
           Accept
         </button>
 
-        <button
-          onClick={() =>
-            updateCustomerOrderStatus(
-              order,
-              "rejected",
-              "cancelled"
-            )
-          }
-          className="bg-red-600 text-white px-3 py-1 rounded mb-1"
-        >
-          Reject
-        </button>
+{isAdmin && (
+  <button
+    onClick={() =>
+      updateCustomerOrderStatus(
+        order,
+        "rejected",
+        "cancelled"
+      )
+    }
+    className="bg-red-600 text-white px-3 py-1 rounded mb-1"
+  >
+    Reject
+  </button>
+)}
       </>
     )}
 
