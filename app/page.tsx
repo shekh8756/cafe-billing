@@ -700,13 +700,13 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
 
 
         {isAdmin && (
-          <button
-            onClick={() => setTab("reports")}
-            className="bg-purple-600 text-white px-4 py-2 rounded"
-          >
-            Reports
-          </button>
-        )
+  <button
+    onClick={() => setTab("reports")}
+    className="bg-purple-600 text-white px-4 py-2 rounded"
+  >
+    Reports
+  </button>
+)}
       </div>
 
       {tab === "billing" && (
