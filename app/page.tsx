@@ -2364,6 +2364,7 @@ const isStaff = profile?.role === "staff";
         <th className="p-2 border">Phone</th>
         <th className="p-2 border">Total Orders</th>
         <th className="p-2 border">Total Spending</th>
+        <th className="p-2 border">Items Ordered</th>
         <th className="p-2 border">Last Order</th>
       </tr>
     </thead>
@@ -2404,6 +2405,33 @@ const isStaff = profile?.role === "staff";
           <td className="p-2 border">{c.phone}</td>
           <td className="p-2 border">{c.orders}</td>
           <td className="p-2 border font-bold">₹{c.spending}</td>
+          <td className="p-2 border">
+  {customerOrders
+    .filter(
+      (order: any) =>
+        (order.customer_phone || order.customer_name || order.id) ===
+        (c.phone !== "-" ? c.phone : c.name)
+    )
+    .map((order: any) => {
+      const items = customerOrderItems.filter(
+        (item: any) => item.customer_order_id === order.id
+      );
+
+      return (
+        <div key={order.id} className="mb-2 border-b pb-1">
+          <div className="font-bold text-xs">
+            {new Date(order.created_at).toLocaleString("en-IN")}
+          </div>
+
+          {items.map((item: any) => (
+            <div key={item.id} className="text-xs">
+              {item.product_name} x {item.qty} = ₹{item.total}
+            </div>
+          ))}
+        </div>
+      );
+    })}
+</td>
           <td className="p-2 border">
             {new Date(c.lastOrder).toLocaleString("en-IN")}
           </td>
