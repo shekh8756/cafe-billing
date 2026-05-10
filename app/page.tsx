@@ -9,6 +9,7 @@ export default function CafeBillingApp() {
   const [cart, setCart] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
   const [orderItems, setOrderItems] = useState<any[]>([]);
+  const [profiles, setProfiles] = useState<any[]>([]);
   const [tab, setTab] = useState("billing");
   const [paymentBy, setPaymentBy] = useState("Cash");
   const [loading, setLoading] = useState(false);
@@ -60,18 +61,29 @@ export default function CafeBillingApp() {
       data: { user },
     } = await supabase.auth.getUser();
 
-    setUser(user || null);
-
-    if (user) {
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .single();
-
-      setProfile(profileData || null);
-      loadData();
+    if (!user) {
+      setUser(null);
+      setProfile(null);
+      return;
     }
+
+    const { data: profileData } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", user.id)
+      .single();
+
+    if (profileData?.role !== "admin" && profileData?.approved !== true) {
+      await supabase.auth.signOut();
+      setUser(null);
+      setProfile(null);
+      alert("Your account is pending admin approval. Please contact admin.");
+      return;
+    }
+
+    setUser(user);
+    setProfile(profileData || null);
+    await loadData(profileData?.role === "admin");
   }
 
   async function handleAuth() {
@@ -92,8 +104,9 @@ export default function CafeBillingApp() {
 
       if (error) return alert(error.message);
 
-      alert("Account created. Ab login karo.");
+      alert("Account created. Admin approval ke baad login chalega.");
       setAuthMode("login");
+      setAuthForm({ full_name: "", email: "", password: "" });
       return;
     }
 
@@ -112,7 +125,7 @@ export default function CafeBillingApp() {
     setTab("billing");
   }
 
-  async function loadData() {
+  async function loadData(loadAdminData = profile?.role === "admin") {
     const { data: productsData } = await supabase
       .from("products")
       .select("*")
@@ -149,6 +162,42 @@ export default function CafeBillingApp() {
         gst_enabled: settingsData.gst_enabled ?? true,
       });
     }
+
+    if (loadAdminData) {
+      const { data: profilesData } = await supabase
+        .from("profiles")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      setProfiles(profilesData || []);
+    }
+  }
+
+  async function updateStaffStatus(id: string, approved: boolean) {
+    const { error } = await supabase
+      .from("profiles")
+      .update({
+        approved,
+        status: approved ? "approved" : "blocked",
+      })
+      .eq("id", id);
+
+    if (error) return alert(error.message);
+    alert(approved ? "Staff approved" : "Staff blocked");
+    loadData(true);
+  }
+
+  async function makeAdmin(id: string) {
+    if (!confirm("Is user ko admin banana hai?")) return;
+
+    const { error } = await supabase
+      .from("profiles")
+      .update({ role: "admin", approved: true, status: "approved" })
+      .eq("id", id);
+
+    if (error) return alert(error.message);
+    alert("User is now admin");
+    loadData(true);
   }
 
   async function saveSettings() {
@@ -168,7 +217,7 @@ export default function CafeBillingApp() {
     if (error) return alert(error.message);
 
     alert("Cafe details saved");
-    loadData();
+    loadData(true);
   }
 
   async function addProduct() {
@@ -201,7 +250,7 @@ export default function CafeBillingApp() {
     }
 
     setNewProduct({ name: "", price: "", type: "Veg", image: "" });
-    loadData();
+    loadData(profile?.role === "admin");
   }
 
   function startEditProduct(product: any) {
@@ -222,7 +271,7 @@ export default function CafeBillingApp() {
     if (error) return alert(error.message);
 
     setCart(cart.filter((i) => i.id !== id));
-    loadData();
+    loadData(profile?.role === "admin");
   }
 
   function cancelEdit() {
@@ -308,7 +357,7 @@ export default function CafeBillingApp() {
     setCart([]);
     setLoading(false);
     alert("Order saved successfully");
-    loadData();
+    loadData(profile?.role === "admin");
   }
 
   function billHtml({
@@ -461,6 +510,13 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
     const isToday = (date: string) =>
       new Date(date).toDateString() === now.toDateString();
 
+    const isYesterday = (date: string) => {
+      const d = new Date(date);
+      const y = new Date();
+      y.setDate(now.getDate() - 1);
+      return d.toDateString() === y.toDateString();
+    };
+
     const isLast7Days = (date: string) =>
       (now.getTime() - new Date(date).getTime()) / (1000 * 60 * 60 * 24) <= 7;
 
@@ -469,12 +525,19 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
       return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
     };
 
+    const isThisYear = (date: string) => {
+      const d = new Date(date);
+      return d.getFullYear() === now.getFullYear();
+    };
+
     const sum = (list: any[]) =>
       list.reduce((s, o) => s + Number(o.total || 0), 0);
 
     const todayOrders = orders.filter((o) => isToday(o.created_at));
+    const yesterdayOrders = orders.filter((o) => isYesterday(o.created_at));
     const weekOrders = orders.filter((o) => isLast7Days(o.created_at));
     const monthOrders = orders.filter((o) => isThisMonth(o.created_at));
+    const yearOrders = orders.filter((o) => isThisYear(o.created_at));
 
     const itemMap: any = {};
 
@@ -494,17 +557,40 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
     const filteredTotal = sum(filteredOrders);
     const filteredTax = filteredOrders.reduce((s, o) => s + Number(o.tax || 0), 0);
 
+    const staffSales = profiles
+      .filter((p) => p.role !== "admin")
+      .map((staff) => {
+        const staffOrders = orders.filter((o) => o.user_id === staff.id || o.user_email === staff.email);
+        return {
+          id: staff.id,
+          name: staff.full_name || staff.email,
+          email: staff.email,
+          status: staff.status,
+          approved: staff.approved,
+          today: sum(staffOrders.filter((o) => isToday(o.created_at))),
+          yesterday: sum(staffOrders.filter((o) => isYesterday(o.created_at))),
+          week: sum(staffOrders.filter((o) => isLast7Days(o.created_at))),
+          month: sum(staffOrders.filter((o) => isThisMonth(o.created_at))),
+          year: sum(staffOrders.filter((o) => isThisYear(o.created_at))),
+          total: sum(staffOrders),
+          orders: staffOrders.length,
+        };
+      });
+
     return {
       todaySale: sum(todayOrders),
+      yesterdaySale: sum(yesterdayOrders),
       weekSale: sum(weekOrders),
       monthSale: sum(monthOrders),
+      yearSale: sum(yearOrders),
       totalSale: sum(orders),
       filteredTotal,
       filteredTax,
       filteredCount: filteredOrders.length,
       itemWise: Object.values(itemMap),
+      staffSales,
     };
-  }, [orders, orderItems, filteredOrders]);
+  }, [orders, orderItems, filteredOrders, profiles]);
 
   if (!user) {
     return (
@@ -891,11 +977,77 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          <h3 className="text-xl font-bold mb-3">Staff Approval & User-wise Sales</h3>
+          <div className="bg-white rounded-xl shadow overflow-auto mb-6">
+            <table className="w-full border">
+              <thead>
+                <tr className="bg-gray-200">
+                  <th className="p-2 border">Staff</th>
+                  <th className="p-2 border">Status</th>
+                  <th className="p-2 border">Today</th>
+                  <th className="p-2 border">Yesterday</th>
+                  <th className="p-2 border">Week</th>
+                  <th className="p-2 border">Month</th>
+                  <th className="p-2 border">Year</th>
+                  <th className="p-2 border">Total</th>
+                  <th className="p-2 border">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {analytics.staffSales.map((staff: any) => (
+                  <tr key={staff.id}>
+                    <td className="p-2 border">
+                      <div className="font-bold">{staff.name}</div>
+                      <div className="text-xs text-gray-600">{staff.email}</div>
+                    </td>
+                    <td className="p-2 border">{staff.approved ? "Approved" : staff.status || "Pending"}</td>
+                    <td className="p-2 border">₹{staff.today}</td>
+                    <td className="p-2 border">₹{staff.yesterday}</td>
+                    <td className="p-2 border">₹{staff.week}</td>
+                    <td className="p-2 border">₹{staff.month}</td>
+                    <td className="p-2 border">₹{staff.year}</td>
+                    <td className="p-2 border font-bold">₹{staff.total}</td>
+                    <td className="p-2 border">
+                      {!staff.approved && (
+                        <button
+                          onClick={() => updateStaffStatus(staff.id, true)}
+                          className="bg-green-600 text-white px-3 py-1 rounded mr-2 mb-1"
+                        >
+                          Approve
+                        </button>
+                      )}
+                      {staff.approved && (
+                        <button
+                          onClick={() => updateStaffStatus(staff.id, false)}
+                          className="bg-red-600 text-white px-3 py-1 rounded mr-2 mb-1"
+                        >
+                          Block
+                        </button>
+                      )}
+                      <button
+                        onClick={() => makeAdmin(staff.id)}
+                        className="bg-blue-600 text-white px-3 py-1 rounded mb-1"
+                      >
+                        Make Admin
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
             <div className="bg-white p-5 rounded-xl shadow">
               Today Sale
               <br />
               <b>₹{analytics.todaySale}</b>
+            </div>
+
+            <div className="bg-white p-5 rounded-xl shadow">
+              Yesterday Sale
+              <br />
+              <b>₹{analytics.yesterdaySale}</b>
             </div>
 
             <div className="bg-white p-5 rounded-xl shadow">
@@ -911,9 +1063,9 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
             </div>
 
             <div className="bg-white p-5 rounded-xl shadow">
-              Total Sale
+              This Year
               <br />
-              <b>₹{analytics.totalSale}</b>
+              <b>₹{analytics.yearSale}</b>
             </div>
           </div>
 
