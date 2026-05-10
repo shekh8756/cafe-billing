@@ -557,7 +557,6 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
     const filteredTotal = sum(filteredOrders);
     const filteredTax = filteredOrders.reduce((s, o) => s + Number(o.tax || 0), 0);
 
-    $1
 
     const itemSalesRows = orderItems.map((item) => {
       const order = orders.find((o) => o.id === item.order_id);
