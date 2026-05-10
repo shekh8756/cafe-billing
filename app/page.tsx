@@ -10,6 +10,10 @@ export default function CafeBillingApp() {
   const [orders, setOrders] = useState<any[]>([]);
   const [orderItems, setOrderItems] = useState<any[]>([]);
   const [profiles, setProfiles] = useState<any[]>([]);
+  const [restaurantTables, setRestaurantTables] = useState<any[]>([]);
+  const [customerOrders, setCustomerOrders] = useState<any[]>([]);
+  const [customerOrderItems, setCustomerOrderItems] = useState<any[]>([]);
+
   const [tab, setTab] = useState("billing");
   const [paymentBy, setPaymentBy] = useState("Cash");
   const [loading, setLoading] = useState(false);
@@ -35,6 +39,8 @@ export default function CafeBillingApp() {
     logo: "",
     gst_number: "",
     gst_enabled: true,
+    upi_id: "",
+    upi_qr_image: "",
   });
 
   const [newProduct, setNewProduct] = useState({
@@ -44,7 +50,27 @@ export default function CafeBillingApp() {
     image: "",
   });
 
+  const [newTableName, setNewTableName] = useState("");
+  const [customerCart, setCustomerCart] = useState<any[]>([]);
+  const [qrForm, setQrForm] = useState({
+    customer_name: "",
+    customer_phone: "",
+    transaction_id: "",
+  });
+
+  const [customerTableSlug, setCustomerTableSlug] = useState("");
+  const [customerTable, setCustomerTable] = useState<any>(null);
+
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tableSlug = params.get("table");
+
+    if (tableSlug) {
+      setCustomerTableSlug(tableSlug);
+      loadCustomerPage(tableSlug);
+      return;
+    }
+
     checkUser();
 
     const {
@@ -55,6 +81,42 @@ export default function CafeBillingApp() {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  async function loadCustomerPage(tableSlug: string) {
+    const { data: productsData } = await supabase
+      .from("products")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    const { data: settingsData } = await supabase
+      .from("cafe_settings")
+      .select("*")
+      .eq("id", 1)
+      .single();
+
+    const { data: tableData } = await supabase
+      .from("restaurant_tables")
+      .select("*")
+      .eq("qr_slug", tableSlug)
+      .single();
+
+    setProducts(productsData || []);
+    setCustomerTable(tableData || null);
+
+    if (settingsData) {
+      setSettings({
+        cafe_name: settingsData.cafe_name || "Zenkai Kitchen",
+        address: settingsData.address || "",
+        phone: settingsData.phone || "",
+        email: settingsData.email || "",
+        logo: settingsData.logo || "",
+        gst_number: settingsData.gst_number || "",
+        gst_enabled: settingsData.gst_enabled ?? true,
+        upi_id: settingsData.upi_id || "",
+        upi_qr_image: settingsData.upi_qr_image || "",
+      });
+    }
+  }
 
   async function checkUser() {
     const {
@@ -141,6 +203,21 @@ export default function CafeBillingApp() {
       .select("*")
       .order("created_at", { ascending: false });
 
+    const { data: tablesData } = await supabase
+      .from("restaurant_tables")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    const { data: customerOrdersData } = await supabase
+      .from("customer_orders")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    const { data: customerOrderItemsData } = await supabase
+      .from("customer_order_items")
+      .select("*")
+      .order("created_at", { ascending: false });
+
     const { data: settingsData } = await supabase
       .from("cafe_settings")
       .select("*")
@@ -150,6 +227,9 @@ export default function CafeBillingApp() {
     setProducts(productsData || []);
     setOrders(ordersData || []);
     setOrderItems(itemsData || []);
+    setRestaurantTables(tablesData || []);
+    setCustomerOrders(customerOrdersData || []);
+    setCustomerOrderItems(customerOrderItemsData || []);
 
     if (settingsData) {
       setSettings({
@@ -160,6 +240,8 @@ export default function CafeBillingApp() {
         logo: settingsData.logo || "",
         gst_number: settingsData.gst_number || "",
         gst_enabled: settingsData.gst_enabled ?? true,
+        upi_id: settingsData.upi_id || "",
+        upi_qr_image: settingsData.upi_qr_image || "",
       });
     }
 
@@ -211,6 +293,8 @@ export default function CafeBillingApp() {
         logo: settings.logo,
         gst_number: settings.gst_number,
         gst_enabled: settings.gst_enabled,
+        upi_id: settings.upi_id,
+        upi_qr_image: settings.upi_qr_image,
       })
       .eq("id", 1);
 
@@ -305,6 +389,32 @@ export default function CafeBillingApp() {
     );
   }
 
+  function addToCustomerCart(product: any) {
+    const found = customerCart.find((i) => i.id === product.id);
+
+    if (found) {
+      setCustomerCart(
+        customerCart.map((i) =>
+          i.id === product.id ? { ...i, qty: i.qty + 1 } : i
+        )
+      );
+    } else {
+      setCustomerCart([...customerCart, { ...product, qty: 1 }]);
+    }
+  }
+
+  function increaseCustomerQty(id: string) {
+    setCustomerCart(customerCart.map((i) => (i.id === id ? { ...i, qty: i.qty + 1 } : i)));
+  }
+
+  function decreaseCustomerQty(id: string) {
+    setCustomerCart(
+      customerCart
+        .map((i) => (i.id === id ? { ...i, qty: i.qty - 1 } : i))
+        .filter((i) => i.qty > 0)
+    );
+  }
+
   const subtotal = useMemo(
     () => cart.reduce((sum, item) => sum + Number(item.price) * item.qty, 0),
     [cart]
@@ -312,6 +422,14 @@ export default function CafeBillingApp() {
 
   const tax = settings.gst_enabled ? Math.round(subtotal * 0.05) : 0;
   const total = subtotal + tax;
+
+  const customerSubtotal = useMemo(
+    () => customerCart.reduce((sum, item) => sum + Number(item.price) * item.qty, 0),
+    [customerCart]
+  );
+
+  const customerTax = settings.gst_enabled ? Math.round(customerSubtotal * 0.05) : 0;
+  const customerTotal = customerSubtotal + customerTax;
 
   async function saveOrder() {
     if (cart.length === 0) return alert("Pehle product add karo");
@@ -357,6 +475,165 @@ export default function CafeBillingApp() {
     setCart([]);
     setLoading(false);
     alert("Order saved successfully");
+    loadData(profile?.role === "admin");
+  }
+
+  async function createRestaurantTable() {
+    if (!newTableName.trim()) return alert("Table name daalo");
+
+    const slug = newTableName
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") + "-" + Date.now().toString().slice(-5);
+
+    const { error } = await supabase.from("restaurant_tables").insert({
+      table_name: newTableName.trim(),
+      qr_slug: slug,
+    });
+
+    if (error) return alert(error.message);
+
+    setNewTableName("");
+    alert("Table QR created");
+    loadData(true);
+  }
+
+  function getCustomerOrderUrl(table: any) {
+    if (typeof window === "undefined") return "";
+    return `${window.location.origin}?table=${table.qr_slug}`;
+  }
+
+  function getQrImageUrl(table: any) {
+    const url = getCustomerOrderUrl(table);
+    return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(url)}`;
+  }
+
+  async function submitCustomerOrder() {
+    if (!customerTable) return alert("Table not found");
+    if (customerCart.length === 0) return alert("Pehle item add karo");
+    if (!qrForm.customer_name.trim()) return alert("Name daalo");
+    if (!qrForm.transaction_id.trim()) return alert("Payment transaction ID daalo");
+
+    setLoading(true);
+
+    const { data: order, error: orderError } = await supabase
+      .from("customer_orders")
+      .insert({
+        table_id: customerTable.id,
+        table_name: customerTable.table_name,
+        customer_name: qrForm.customer_name,
+        customer_phone: qrForm.customer_phone,
+        payment_status: "pending_verification",
+        order_status: "pending",
+        payment_method: "UPI",
+        transaction_id: qrForm.transaction_id,
+        subtotal: customerSubtotal,
+        tax: customerTax,
+        total: customerTotal,
+      })
+      .select()
+      .single();
+
+    if (orderError) {
+      setLoading(false);
+      return alert(orderError.message);
+    }
+
+    const items = customerCart.map((item) => ({
+      customer_order_id: order.id,
+      product_id: item.id,
+      product_name: item.name,
+      price: Number(item.price),
+      qty: item.qty,
+      total: Number(item.price) * item.qty,
+    }));
+
+    const { error: itemsError } = await supabase
+      .from("customer_order_items")
+      .insert(items);
+
+    setLoading(false);
+
+    if (itemsError) return alert(itemsError.message);
+
+    setCustomerCart([]);
+    setQrForm({ customer_name: "", customer_phone: "", transaction_id: "" });
+    alert("Order submitted. Staff payment verify karke accept karega.");
+  }
+
+  async function updateCustomerOrderStatus(order: any, paymentStatus: string, orderStatus: string) {
+    const { error } = await supabase
+      .from("customer_orders")
+      .update({ payment_status: paymentStatus, order_status: orderStatus })
+      .eq("id", order.id);
+
+    if (error) return alert(error.message);
+
+    alert("Order updated");
+    loadData(profile?.role === "admin");
+  }
+
+  async function convertCustomerOrderToBill(customerOrder: any) {
+    const items = customerOrderItems.filter((item) => item.customer_order_id === customerOrder.id);
+
+    if (items.length === 0) return alert("Customer order items nahi mile");
+
+    setLoading(true);
+
+    const { data: order, error: orderError } = await supabase
+      .from("orders")
+      .insert({
+        subtotal: Number(customerOrder.subtotal || 0),
+        tax: Number(customerOrder.tax || 0),
+        total: Number(customerOrder.total || 0),
+        payment_by: "UPI Online",
+        user_id: user?.id,
+        user_email: user?.email,
+      })
+      .select()
+      .single();
+
+    if (orderError) {
+      setLoading(false);
+      return alert(orderError.message);
+    }
+
+    const posItems = items.map((item) => ({
+      order_id: order.id,
+      product_name: item.product_name,
+      price: Number(item.price),
+      qty: Number(item.qty),
+      total: Number(item.total),
+    }));
+
+    const { error: itemError } = await supabase.from("order_items").insert(posItems);
+
+    if (itemError) {
+      setLoading(false);
+      return alert(itemError.message);
+    }
+
+    await supabase
+      .from("customer_orders")
+      .update({ payment_status: "verified", order_status: "completed" })
+      .eq("id", customerOrder.id);
+
+    setLoading(false);
+
+    openPrintWindow(
+      billHtml({
+        billNo: order.id.slice(0, 8).toUpperCase(),
+        date: new Date().toLocaleString("en-IN"),
+        payment: "UPI Online",
+        items: posItems,
+        billSubtotal: customerOrder.subtotal,
+        billTax: customerOrder.tax,
+        billTotal: customerOrder.total,
+      })
+    );
+
+    alert("Customer order POS bill me convert ho gaya");
     loadData(profile?.role === "admin");
   }
 
@@ -413,7 +690,7 @@ ${items
       `<tr><td>${item.name || item.product_name} x ${
         item.qty
       }</td><td class="right">₹${
-        item.total || Number(item.price) * item.qty
+        item.total || Number(item.price) * Number(item.qty)
       }</td></tr>`
   )
   .join("")}
@@ -627,6 +904,112 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
     };
   }, [orders, orderItems, filteredOrders, profiles]);
 
+  if (customerTableSlug) {
+    return (
+      <div className="min-h-screen bg-gray-100 p-5 text-black">
+        <div className="max-w-5xl mx-auto">
+          <div className="bg-white p-5 rounded-xl shadow mb-5 text-center">
+            {settings.logo && <img src={settings.logo} className="h-20 mx-auto object-contain mb-2" alt="logo" />}
+            <h1 className="text-3xl font-bold">{settings.cafe_name || "Zenkai Kitchen"}</h1>
+            <p>{settings.address}</p>
+            <p className="font-bold mt-2">{customerTable?.table_name || "Table"} QR Order</p>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+            <div className="lg:col-span-2">
+              <h2 className="text-xl font-bold mb-3">Menu</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {products.map((p) => {
+                  const productType = String(p.type || "").toLowerCase().trim();
+                  const isVeg = productType === "veg";
+
+                  return (
+                    <div
+                      key={p.id}
+                      className={`p-4 rounded-xl shadow border ${isVeg ? "bg-green-50 border-green-300" : "bg-red-50 border-red-300"}`}
+                    >
+                      <img src={p.image} className="h-32 w-full object-cover rounded" alt={p.name} />
+                      <h3 className="font-bold mt-2">{p.name}</h3>
+                      <p className="font-bold">₹{p.price}</p>
+                      <span className={`inline-block text-xs font-bold px-3 py-1 rounded-full mt-1 ${isVeg ? "bg-green-200 text-green-800" : "bg-red-200 text-red-800"}`}>
+                        {isVeg ? "Veg" : "Non Veg"}
+                      </span>
+                      <br />
+                      <button onClick={() => addToCustomerCart(p)} className="bg-blue-600 text-white px-4 py-2 mt-3 rounded">
+                        Add
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="bg-white p-5 rounded-xl shadow h-fit">
+              <h2 className="text-xl font-bold mb-3">Your Order</h2>
+
+              {customerCart.length === 0 && <p className="text-gray-500">No item added</p>}
+
+              {customerCart.map((item) => (
+                <div key={item.id} className="border-b py-2">
+                  <div className="flex justify-between">
+                    <span>{item.name} x {item.qty}</span>
+                    <span>₹{Number(item.price) * item.qty}</span>
+                  </div>
+                  <div className="flex gap-2 mt-2">
+                    <button onClick={() => increaseCustomerQty(item.id)} className="bg-blue-600 text-white px-3 py-1 rounded">+</button>
+                    <button onClick={() => decreaseCustomerQty(item.id)} className="bg-red-600 text-white px-3 py-1 rounded">-</button>
+                  </div>
+                </div>
+              ))}
+
+              <div className="mt-4 space-y-1">
+                <div className="flex justify-between"><span>Subtotal</span><span>₹{customerSubtotal}</span></div>
+                {settings.gst_enabled && <div className="flex justify-between"><span>GST</span><span>₹{customerTax}</span></div>}
+                <div className="flex justify-between font-bold text-lg"><span>Total</span><span>₹{customerTotal}</span></div>
+              </div>
+
+              <div className="mt-4 border-t pt-4">
+                <h3 className="font-bold mb-2">Pay via UPI</h3>
+                {settings.upi_qr_image && <img src={settings.upi_qr_image} className="w-48 h-48 object-contain mx-auto border rounded" alt="UPI QR" />}
+                {settings.upi_id && <p className="text-center font-bold mt-2">UPI ID: {settings.upi_id}</p>}
+                {!settings.upi_id && !settings.upi_qr_image && <p className="text-red-600">UPI payment details not available. Please contact staff.</p>}
+              </div>
+
+              <input
+                className="w-full border p-2 rounded mt-4"
+                placeholder="Your Name"
+                value={qrForm.customer_name}
+                onChange={(e) => setQrForm({ ...qrForm, customer_name: e.target.value })}
+              />
+
+              <input
+                className="w-full border p-2 rounded mt-2"
+                placeholder="Phone Number optional"
+                value={qrForm.customer_phone}
+                onChange={(e) => setQrForm({ ...qrForm, customer_phone: e.target.value })}
+              />
+
+              <input
+                className="w-full border p-2 rounded mt-2"
+                placeholder="UPI Transaction ID"
+                value={qrForm.transaction_id}
+                onChange={(e) => setQrForm({ ...qrForm, transaction_id: e.target.value })}
+              />
+
+              <button
+                disabled={loading}
+                onClick={submitCustomerOrder}
+                className="w-full bg-black text-white p-3 rounded mt-4"
+              >
+                {loading ? "Submitting..." : "Submit Paid Order"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100 p-5 text-black">
@@ -739,6 +1122,15 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
             className="bg-purple-600 text-white px-4 py-2 rounded"
           >
             Reports
+          </button>
+        )}
+
+        {(isAdmin || profile?.role === "staff") && (
+          <button
+            onClick={() => setTab("qr-orders")}
+            className="bg-orange-600 text-white px-4 py-2 rounded"
+          >
+            QR Orders
           </button>
         )}
       </div>
@@ -1001,6 +1393,20 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
                 onChange={(e) => setSettings({ ...settings, logo: e.target.value })}
               />
 
+              <input
+                className="border p-2 rounded"
+                placeholder="UPI ID"
+                value={settings.upi_id}
+                onChange={(e) => setSettings({ ...settings, upi_id: e.target.value })}
+              />
+
+              <input
+                className="border p-2 rounded"
+                placeholder="UPI QR Image URL"
+                value={settings.upi_qr_image}
+                onChange={(e) => setSettings({ ...settings, upi_qr_image: e.target.value })}
+              />
+
               <label className="flex items-center gap-2 font-bold md:col-span-2">
                 <input
                   type="checkbox"
@@ -1133,6 +1539,113 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
                     <td className="p-2 border">₹{item.total}</td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {tab === "qr-orders" && (isAdmin || profile?.role === "staff") && (
+        <div>
+          <h2 className="text-2xl font-bold mb-4">QR Orders</h2>
+
+          {isAdmin && (
+            <div className="bg-white p-5 rounded-xl shadow mb-5">
+              <h3 className="text-xl font-bold mb-3">Create Table QR</h3>
+              <div className="flex flex-wrap gap-3">
+                <input
+                  className="border p-2 rounded"
+                  placeholder="Table 1 / Cabin 1"
+                  value={newTableName}
+                  onChange={(e) => setNewTableName(e.target.value)}
+                />
+                <button onClick={createRestaurantTable} className="bg-black text-white px-4 py-2 rounded">
+                  Create QR
+                </button>
+              </div>
+            </div>
+          )}
+
+          {isAdmin && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              {restaurantTables.map((table) => (
+                <div key={table.id} className="bg-white p-4 rounded-xl shadow text-center">
+                  <h3 className="font-bold text-lg">{table.table_name}</h3>
+                  <img src={getQrImageUrl(table)} className="mx-auto my-3 border rounded" alt="QR" />
+                  <p className="text-xs break-all">{getCustomerOrderUrl(table)}</p>
+                  <button
+                    onClick={() => navigator.clipboard.writeText(getCustomerOrderUrl(table))}
+                    className="bg-blue-600 text-white px-3 py-1 rounded mt-2"
+                  >
+                    Copy Link
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <h3 className="text-xl font-bold mb-3">Incoming Customer Orders</h3>
+          <div className="bg-white rounded-xl shadow overflow-auto">
+            <table className="w-full border">
+              <thead>
+                <tr className="bg-gray-200">
+                  <th className="p-2 border">Date</th>
+                  <th className="p-2 border">Table</th>
+                  <th className="p-2 border">Customer</th>
+                  <th className="p-2 border">Txn ID</th>
+                  <th className="p-2 border">Payment</th>
+                  <th className="p-2 border">Order</th>
+                  <th className="p-2 border">Total</th>
+                  <th className="p-2 border">Items</th>
+                  <th className="p-2 border">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {customerOrders.map((order) => {
+                  const items = customerOrderItems.filter((i) => i.customer_order_id === order.id);
+
+                  return (
+                    <tr key={order.id}>
+                      <td className="p-2 border">{new Date(order.created_at).toLocaleString("en-IN")}</td>
+                      <td className="p-2 border">{order.table_name}</td>
+                      <td className="p-2 border">
+                        <div className="font-bold">{order.customer_name}</div>
+                        <div className="text-xs">{order.customer_phone}</div>
+                      </td>
+                      <td className="p-2 border">{order.transaction_id}</td>
+                      <td className="p-2 border">{order.payment_status}</td>
+                      <td className="p-2 border">{order.order_status}</td>
+                      <td className="p-2 border font-bold">₹{order.total}</td>
+                      <td className="p-2 border">
+                        {items.map((item) => (
+                          <div key={item.id} className="text-sm">
+                            {item.product_name} x {item.qty} = ₹{item.total}
+                          </div>
+                        ))}
+                      </td>
+                      <td className="p-2 border">
+                        <button
+                          onClick={() => updateCustomerOrderStatus(order, "verified", "accepted")}
+                          className="bg-green-600 text-white px-3 py-1 rounded mr-2 mb-1"
+                        >
+                          Verify
+                        </button>
+                        <button
+                          onClick={() => convertCustomerOrderToBill(order)}
+                          className="bg-blue-600 text-white px-3 py-1 rounded mr-2 mb-1"
+                        >
+                          Save & Print
+                        </button>
+                        <button
+                          onClick={() => updateCustomerOrderStatus(order, "rejected", "cancelled")}
+                          className="bg-red-600 text-white px-3 py-1 rounded mb-1"
+                        >
+                          Reject
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
