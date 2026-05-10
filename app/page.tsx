@@ -596,6 +596,7 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
       filteredTax,
       filteredCount: filteredOrders.length,
       itemWise: Object.values(itemMap),
+      staffSales: userDetails,
       itemSalesRows,
       userDetails,
     };
