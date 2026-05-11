@@ -684,7 +684,6 @@ async function payWithRazorpay() {
   async function submitCustomerOrder(razorpayPaymentId?: string) {
     if (!customerTable) return alert("Table not found");
     if (customerCart.length === 0) return alert("Pehle item add karo");
-    if (!qrForm.customer_name.trim()) return alert("Name daalo");
     if (!razorpayPaymentId && !qrForm.transaction_id.trim()) {
   return alert("Payment transaction ID daalo");
 }
@@ -696,12 +695,12 @@ async function payWithRazorpay() {
       .insert({
         table_id: customerTable.id,
         table_name: customerTable.table_name,
-        customer_name: qrForm.customer_name,
-        customer_phone: qrForm.customer_phone,
+        customer_name: "Razorpay Customer",
+        customer_phone: "",
         payment_status: razorpayPaymentId ? "verified" : "pending_verification",
         order_status: razorpayPaymentId ? "paid" : "pending",
         payment_method: razorpayPaymentId ? "Razorpay" : "UPI",
-        transaction_id: razorpayPaymentId || qrForm.transaction_id,
+        transaction_id: razorpayPaymentId || "",
         subtotal: customerSubtotal,
         tax: customerTax,
         total: customerTotal,
@@ -1440,34 +1439,6 @@ if (customerTableSlug) {
                 {settings.gst_enabled && <div className="flex justify-between"><span>GST</span><span>₹{customerTax}</span></div>}
                 <div className="flex justify-between font-bold text-lg"><span>Total</span><span>₹{customerTotal}</span></div>
               </div>
-
-              <div className="mt-4 border-t pt-4">
-                <h3 className="font-bold mb-2">Pay via UPI</h3>
-                {settings.upi_qr_image && <img src={settings.upi_qr_image} className="w-48 h-48 object-contain mx-auto border rounded" alt="UPI QR" />}
-                {settings.upi_id && <p className="text-center font-bold mt-2">UPI ID: {settings.upi_id}</p>}
-                {!settings.upi_id && !settings.upi_qr_image && <p className="text-red-600">UPI payment details not available. Please contact staff.</p>}
-              </div>
-
-              <input
-                className="w-full border p-2 rounded mt-4"
-                placeholder="Your Name"
-                value={qrForm.customer_name}
-                onChange={(e) => setQrForm({ ...qrForm, customer_name: e.target.value })}
-              />
-
-              <input
-                className="w-full border p-2 rounded mt-2"
-                placeholder="Phone Number optional"
-                value={qrForm.customer_phone}
-                onChange={(e) => setQrForm({ ...qrForm, customer_phone: e.target.value })}
-              />
-
-              <input
-                className="w-full border p-2 rounded mt-2"
-                placeholder="UPI Transaction ID"
-                value={qrForm.transaction_id}
-                onChange={(e) => setQrForm({ ...qrForm, transaction_id: e.target.value })}
-              />
 
                 <button
                   disabled={loading}
