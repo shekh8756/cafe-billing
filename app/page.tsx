@@ -659,9 +659,7 @@ async function payWithRazorpay() {
           return alert("Payment verification failed");
         }
 
-        await submitCustomerOrder(
-          response.razorpay_payment_id
-        );
+       await submitCustomerOrder(response.razorpay_payment_id); 
       },
 
       prefill: {
@@ -700,8 +698,8 @@ async function payWithRazorpay() {
         table_name: customerTable.table_name,
         customer_name: qrForm.customer_name,
         customer_phone: qrForm.customer_phone,
-        payment_status: "pending_verification",
-        order_status: "pending",
+        payment_status: razorpayPaymentId ? "verified" : "pending_verification",
+        order_status: razorpayPaymentId ? "paid" : "pending",
         payment_method: razorpayPaymentId ? "Razorpay" : "UPI",
         transaction_id: razorpayPaymentId || qrForm.transaction_id,
         subtotal: customerSubtotal,
@@ -738,7 +736,7 @@ async function payWithRazorpay() {
 
     setCustomerCart([]);
     setQrForm({ customer_name: "", customer_phone: "", transaction_id: "" });
-    alert("Order submitted. Staff payment verify karke accept karega.");
+    alert("Payment successful. Order submitted.");
   }
 
   async function updateCustomerOrderStatus(
