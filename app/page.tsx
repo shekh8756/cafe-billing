@@ -1,5 +1,5 @@
 "use client";
-
+import Script from "next/script";
 import { useEffect, useMemo, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "./lib/supabase";
@@ -600,12 +600,96 @@ async function saveDailyClosingReport() {
     const url = getCustomerOrderUrl(table);
     return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(url)}`;
   }
+async function payWithRazorpay() {
+  try {
+    if (!(window as any).Razorpay) {
+      return alert("Razorpay load nahi hua");
+    }
 
-  async function submitCustomerOrder() {
+    if (!customerTotal || customerTotal <= 0) {
+      return alert("Invalid total");
+    }
+
+    const res = await fetch("/api/razorpay/create-order", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        amount: customerTotal,
+      }),
+    });
+
+    const order = await res.json();
+
+    if (!order.id) {
+      return alert(order.error || "Order create failed");
+    }
+
+    const options = {
+      key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+
+      amount: order.amount,
+
+      currency: "INR",
+
+      name: "Zenkai Kitchen",
+
+      description: "Customer Food Order",
+
+      order_id: order.id,
+
+      handler: async function (response: any) {
+        const verifyRes = await fetch(
+          "/api/razorpay/verify-payment",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type": "application/json",
+            },
+
+            body: JSON.stringify(response),
+          }
+        );
+
+        const verifyData = await verifyRes.json();
+
+        if (!verifyData.success) {
+          return alert("Payment verification failed");
+        }
+
+        await submitCustomerOrder(
+          response.razorpay_payment_id
+        );
+      },
+
+      prefill: {
+        name: qrForm.customer_name || "",
+        contact: qrForm.customer_phone || "",
+      },
+
+      theme: {
+        color: "#000000",
+      },
+    };
+
+    const razorpay = new (window as any).Razorpay(
+      options
+    );
+
+    razorpay.open();
+  } catch (error: any) {
+    alert(error.message || "Razorpay failed");
+  }
+}
+  async function submitCustomerOrder(razorpayPaymentId?: string) {
     if (!customerTable) return alert("Table not found");
     if (customerCart.length === 0) return alert("Pehle item add karo");
     if (!qrForm.customer_name.trim()) return alert("Name daalo");
-    if (!qrForm.transaction_id.trim()) return alert("Payment transaction ID daalo");
+    if (!razorpayPaymentId && !qrForm.transaction_id.trim()) {
+  return alert("Payment transaction ID daalo");
+}
 
     setLoading(true);
 
@@ -618,8 +702,8 @@ async function saveDailyClosingReport() {
         customer_phone: qrForm.customer_phone,
         payment_status: "pending_verification",
         order_status: "pending",
-        payment_method: "UPI",
-        transaction_id: qrForm.transaction_id,
+        payment_method: razorpayPaymentId ? "Razorpay" : "UPI",
+        transaction_id: razorpayPaymentId || qrForm.transaction_id,
         subtotal: customerSubtotal,
         tax: customerTax,
         total: customerTotal,
@@ -1263,7 +1347,16 @@ userDetails,
   }, [orders, orderItems, filteredOrders, profiles, expenses, fromDate, toDate]);
 
   if (customerTableSlug) {
-    return (
+  return (
+    <>
+      <Script src="https://checkout.razorpay.com/v1/checkout.js" />
+
+      <div>
+        ...
+      </div>
+    </>
+  );
+}
       <div className="min-h-screen bg-gray-100 p-5 text-black">
         <div className="max-w-5xl mx-auto">
           <div className="bg-white p-5 rounded-xl shadow mb-5 text-center">
@@ -1384,13 +1477,13 @@ userDetails,
                 onChange={(e) => setQrForm({ ...qrForm, transaction_id: e.target.value })}
               />
 
-              <button
-                disabled={loading}
-                onClick={submitCustomerOrder}
-                className="w-full bg-black text-white p-3 rounded mt-4"
-              >
-                {loading ? "Submitting..." : "Submit Paid Order"}
-              </button>
+                <button
+                 disabled={loading}
+                 onClick={payWithRazorpay}
+                 className="w-full bg-black text-white p-3 rounded mt-4"
+                >
+                 {loading ? "Please wait..." : `Pay Now ₹${customerTotal}`}
+                 </button>
             </div>
           </div>
         </div>
