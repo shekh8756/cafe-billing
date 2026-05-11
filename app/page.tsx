@@ -1353,8 +1353,6 @@ if (customerTableSlug) {
 
       <div className="min-h-screen bg-gray-100 p-5 text-black">
         <div className="max-w-5xl mx-auto">
-      <div className="min-h-screen bg-gray-100 p-5 text-black">
-        <div className="max-w-5xl mx-auto">
           <div className="bg-white p-5 rounded-xl shadow mb-5 text-center">
             {settings.logo && <img src={settings.logo} className="h-20 mx-auto object-contain mb-2" alt="logo" />}
             <h1 className="text-3xl font-bold">{settings.cafe_name || "Zenkai Kitchen"}</h1>
@@ -1474,19 +1472,19 @@ if (customerTableSlug) {
               />
 
                 <button
-                 disabled={loading}
-                 onClick={payWithRazorpay}
-                 className="w-full bg-black text-white p-3 rounded mt-4"
+                  disabled={loading}
+                  onClick={payWithRazorpay}
+                  className="w-full bg-black text-white p-3 rounded mt-4"
                 >
-                 {loading ? "Please wait..." : `Pay Now ₹${customerTotal}`}
-                 </button>
+                  {loading ? "Please wait..." : `Pay Now ₹${customerTotal}`}
+                </button>
+              </div>
             </div>
           </div>
-</div>
         </div>
-      </div>
     </>
   );
+}
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100 p-5 text-black">
