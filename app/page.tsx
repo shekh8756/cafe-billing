@@ -1346,17 +1346,13 @@ userDetails,
     };
   }, [orders, orderItems, filteredOrders, profiles, expenses, fromDate, toDate]);
 
-  if (customerTableSlug) {
+if (customerTableSlug) {
   return (
     <>
       <Script src="https://checkout.razorpay.com/v1/checkout.js" />
 
-      <div>
-        ...
-      </div>
-    </>
-  );
-}
+      <div className="min-h-screen bg-gray-100 p-5 text-black">
+        <div className="max-w-5xl mx-auto">
       <div className="min-h-screen bg-gray-100 p-5 text-black">
         <div className="max-w-5xl mx-auto">
           <div className="bg-white p-5 rounded-xl shadow mb-5 text-center">
@@ -1486,11 +1482,11 @@ userDetails,
                  </button>
             </div>
           </div>
+</div>
         </div>
       </div>
-    );
-  }
-
+    </>
+  );
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100 p-5 text-black">
