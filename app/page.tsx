@@ -1,6 +1,6 @@
 "use client";
 import Script from "next/script";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "./lib/supabase";
 
@@ -12,6 +12,8 @@ export default function CafeBillingApp() {
   const [profiles, setProfiles] = useState<any[]>([]);
   const [restaurantTables, setRestaurantTables] = useState<any[]>([]);
   const [customerOrders, setCustomerOrders] = useState<any[]>([]);
+  const lastCustomerOrderCountRef = useRef(0);
+  const [soundEnabled, setSoundEnabled] = useState(false);
   const [customerOrderItems, setCustomerOrderItems] = useState<any[]>([]);
 const [expenses, setExpenses] = useState<any[]>([]);
 const [closingReports, setClosingReports] = useState<any[]>([]);
@@ -92,9 +94,16 @@ const [extraPaymentNote, setExtraPaymentNote] = useState("");
     } = supabase.auth.onAuthStateChange(() => {
       checkUser();
     });
-
-    return () => subscription.unsubscribe();
-  }, []);
+const interval = setInterval(() => {
+  if (user) {
+    loadData(profile?.role === "admin");
+  }
+}, 5000);
+    return () => {
+  subscription.unsubscribe();
+  clearInterval(interval);
+};
+}, []);
 
   async function loadCustomerPage(tableSlug: string) {
     const { data: productsData } = await supabase
@@ -251,7 +260,23 @@ const { data: closingReportsData } = await supabase
     setOrders(ordersData || []);
     setOrderItems(itemsData || []);
     setRestaurantTables(tablesData || []);
-    setCustomerOrders(customerOrdersData || []);
+    const newOrders = customerOrdersData || [];
+
+if (
+  soundEnabled &&
+  lastCustomerOrderCountRef.current > 0 &&
+  newOrders.length > lastCustomerOrderCountRef.current
+) {
+  const audio = new Audio(
+    "https://notificationsounds.com/storage/sounds/file-sounds-1150-pristine.mp3"
+  );
+
+  audio.play();
+}
+
+lastCustomerOrderCountRef.current = newOrders.length;
+
+setCustomerOrders(newOrders);
     setCustomerOrderItems(customerOrderItemsData || []);
 setExpenses(expensesData || []);
 setClosingReports(closingReportsData || []);
@@ -2013,7 +2038,18 @@ const isStaff = profile?.role === "staff";
 
       {tab === "qr-orders" && (isAdmin || profile?.role === "staff") && (
         <div>
-          <h2 className="text-2xl font-bold mb-4">QR Orders</h2>
+          <div className="flex justify-between items-center mb-4">
+  <h2 className="text-2xl font-bold">QR Orders</h2>
+
+  <button
+    onClick={() => setSoundEnabled(!soundEnabled)}
+    className={`px-4 py-2 rounded text-white ${
+      soundEnabled ? "bg-green-600" : "bg-gray-600"
+    }`}
+  >
+    {soundEnabled ? "Sound ON" : "Enable Sound"}
+  </button>
+</div>
 
           {isAdmin && (
             <div className="bg-white p-5 rounded-xl shadow mb-5">
