@@ -94,16 +94,45 @@ const [extraPaymentNote, setExtraPaymentNote] = useState("");
     } = supabase.auth.onAuthStateChange(() => {
       checkUser();
     });
-const interval = setInterval(() => {
-  if (user) {
-    loadData(profile?.role === "admin");
-  }
-}, 5000);
     return () => {
-  subscription.unsubscribe();
-  clearInterval(interval);
-};
+    subscription.unsubscribe();
+    };
+    }, []); 
+useEffect(() => {
+  const params = new URLSearchParams(window.location.search);
+  const tableSlug = params.get("table");
+
+  if (tableSlug) {
+    setCustomerTableSlug(tableSlug);
+    loadCustomerPage(tableSlug);
+    return;
+  }
+
+  checkUser();
+
+  const {
+    data: { subscription },
+  } = supabase.auth.onAuthStateChange(() => {
+    checkUser();
+  });
+
+  return () => {
+    subscription.unsubscribe();
+  };
 }, []);
+
+useEffect(() => {
+  if (!user) return;
+  if (customerTableSlug) return;
+
+  const interval = setInterval(() => {
+    loadData(profile?.role === "admin");
+  }, 5000);
+
+  return () => {
+    clearInterval(interval);
+  };
+}, [user, profile, soundEnabled, customerTableSlug]);
 
   async function loadCustomerPage(tableSlug: string) {
     const { data: productsData } = await supabase
