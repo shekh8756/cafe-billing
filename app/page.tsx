@@ -2050,7 +2050,16 @@ const isStaff = profile?.role === "staff";
             </div>
           )}
 
-          <h3 className="text-xl font-bold mb-3">Incoming Customer Orders</h3>
+          <div className="flex justify-between items-center mb-3">
+  <h3 className="text-xl font-bold">Incoming Customer Orders</h3>
+
+  <button
+    onClick={() => loadData(profile?.role === "admin")}
+    className="bg-black text-white px-4 py-2 rounded"
+  >
+    Refresh Orders
+  </button>
+</div>
           <div className="bg-white rounded-xl shadow overflow-auto">
             <table className="w-full border">
               <thead>
