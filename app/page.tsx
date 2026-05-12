@@ -689,14 +689,36 @@ async function payWithRazorpay() {
 }
 
     setLoading(true);
+let razorpayCustomerPhone = "";
+let razorpayCustomerEmail = "";
 
+if (razorpayPaymentId) {
+  try {
+    const paymentRes = await fetch("/api/razorpay/payment-details", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        payment_id: razorpayPaymentId,
+      }),
+    });
+
+    const paymentData = await paymentRes.json();
+
+    razorpayCustomerPhone = paymentData.contact || "";
+    razorpayCustomerEmail = paymentData.email || "";
+  } catch (e) {
+    console.log("Payment detail fetch failed");
+  }
+}
     const { data: order, error: orderError } = await supabase
       .from("customer_orders")
       .insert({
         table_id: customerTable.id,
         table_name: customerTable.table_name,
-        customer_name: "Razorpay Customer",
-        customer_phone: "",
+        customer_name: razorpayCustomerEmail || "Razorpay Customer",
+        customer_phone: razorpayCustomerPhone,
         payment_status: razorpayPaymentId ? "verified" : "pending_verification",
         order_status: razorpayPaymentId ? "paid" : "pending",
         payment_method: razorpayPaymentId ? "Razorpay" : "UPI",
