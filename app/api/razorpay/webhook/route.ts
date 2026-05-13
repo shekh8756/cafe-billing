@@ -44,7 +44,9 @@ const customerOrderId =
   "";
 
 if (customerOrderId) {
-  await supabase
+    console.log("CUSTOMER_ORDER_ID:", customerOrderId);
+    console.log("RAZORPAY_ORDER_ID:", razorpayOrderId);
+  const result = await supabase
     .from("customer_orders")
     .update({
       payment_status: "verified",
@@ -55,6 +57,7 @@ if (customerOrderId) {
       razorpay_order_id: razorpayOrderId,
     })
     .eq("id", customerOrderId);
+    console.log("SUPABASE_UPDATE_RESULT:", result);
 } else {
   await supabase
     .from("customer_orders")
