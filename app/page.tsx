@@ -2317,18 +2317,25 @@ const isStaff = profile?.role === "staff";
     order.order_status !== "completed" &&
     order.order_status !== "cancelled" && (
       <>
-        <button
-          onClick={() =>
-            updateCustomerOrderStatus(
-              order,
-              "verified",
-              "accepted"
-            )
-          }
-          className="bg-green-600 text-white px-3 py-1 rounded mr-2 mb-1"
-        >
-          Accept
-        </button>
+<button
+  disabled={order.payment_status !== "verified"}
+  onClick={() =>
+    updateCustomerOrderStatus(
+      order,
+      "verified",
+      "accepted"
+    )
+  }
+  className={`text-white px-3 py-1 rounded mr-2 mb-1 ${
+    order.payment_status !== "verified"
+      ? "bg-gray-400 cursor-not-allowed"
+      : "bg-green-600"
+  }`}
+>
+  {order.payment_status !== "verified"
+    ? "Waiting Payment"
+    : "Accept"}
+</button>
 
 {isAdmin && (
   <button
