@@ -38,16 +38,35 @@ export async function POST(req: Request) {
         process.env.SUPABASE_SERVICE_ROLE_KEY!
       );
 
-      await supabase
-        .from("customer_orders")
-        .update({
-          payment_status: "verified",
-          order_status: "paid",
-          transaction_id: paymentId,
-          customer_name: payment?.email || "Razorpay Customer",
-          customer_phone: payment?.contact || "",
-        })
-        .eq("razorpay_order_id", razorpayOrderId);
+const customerOrderId =
+  payment?.notes?.customer_order_id ||
+  order?.notes?.customer_order_id ||
+  "";
+
+if (customerOrderId) {
+  await supabase
+    .from("customer_orders")
+    .update({
+      payment_status: "verified",
+      order_status: "paid",
+      transaction_id: paymentId,
+      customer_name: payment?.email || "Razorpay Customer",
+      customer_phone: payment?.contact || "",
+      razorpay_order_id: razorpayOrderId,
+    })
+    .eq("id", customerOrderId);
+} else {
+  await supabase
+    .from("customer_orders")
+    .update({
+      payment_status: "verified",
+      order_status: "paid",
+      transaction_id: paymentId,
+      customer_name: payment?.email || "Razorpay Customer",
+      customer_phone: payment?.contact || "",
+    })
+    .eq("razorpay_order_id", razorpayOrderId);
+}
     }
 
     return NextResponse.json({ ok: true });
