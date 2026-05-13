@@ -663,19 +663,63 @@ async function payWithRazorpay() {
     if (!customerTotal || customerTotal <= 0) {
       return alert("Invalid total");
     }
+const pendingItems = customerCart.map((item) => ({
+  product_name: item.name,
+  price: item.price,
+  qty: item.qty,
+  total: item.price * item.qty,
+}));
 
+const { data: pendingOrder, error: pendingOrderError } =
+  await supabase
+    .from("customer_orders")
+    .insert({
+      table_id: customerTable?.id,
+      table_name: customerTable?.table_name,
+      customer_name: "Pending Razorpay Customer",
+      customer_phone: "",
+      payment_status: "pending_payment",
+      order_status: "pending",
+      payment_method: "Razorpay",
+      transaction_id: "",
+      subtotal: customerSubtotal,
+      tax: customerTax,
+      total: customerTotal,
+      original_paid_amount: customerTotal,
+      extra_due: 0,
+      extra_payment_note: "",
+    })
+    .select()
+    .single();
+
+if (pendingOrderError || !pendingOrder) {
+  return alert("Order create failed");
+}
+
+await supabase.from("customer_order_items").insert(
+  pendingItems.map((item) => ({
+    customer_order_id: pendingOrder.id,
+    ...item,
+  }))
+);
     const res = await fetch("/api/razorpay/create-order", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        amount: customerTotal,
-      }),
+      amount: customerTotal,
+      customer_order_id: pendingOrder.id,
+    }),
     });
 
     const order = await res.json();
-
+await supabase
+  .from("customer_orders")
+  .update({
+    razorpay_order_id: order.id,
+  })
+  .eq("id", pendingOrder.id);
     if (!order.id) {
       return alert(order.error || "Order create failed");
     }
@@ -713,7 +757,18 @@ async function payWithRazorpay() {
           return alert("Payment verification failed");
         }
 
-       await submitCustomerOrder(response.razorpay_payment_id); 
+       await supabase
+  .from("customer_orders")
+  .update({
+    payment_status: "verified",
+    order_status: "paid",
+    transaction_id: response.razorpay_payment_id,
+  })
+  .eq("id", pendingOrder.id);
+
+alert("Payment successful. Order confirmed.");
+
+loadData(profile?.role === "admin");
       },
 
       prefill: {
