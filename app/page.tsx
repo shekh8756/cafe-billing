@@ -77,6 +77,7 @@ const [closingNote, setClosingNote] = useState("");
 const [selectedCustomerOrderId, setSelectedCustomerOrderId] = useState("");
 const [selectedProductIdForOrder, setSelectedProductIdForOrder] = useState("");
 const [extraPaymentNote, setExtraPaymentNote] = useState("");
+const [selectedPaymentQr, setSelectedPaymentQr] = useState<any>(null);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tableSlug = params.get("table");
@@ -968,6 +969,53 @@ async function updateCustomerOrderItemQty(order: any, item: any, newQty: number)
   await recalculateCustomerOrderTotal(order.id);
   loadData(profile?.role === "admin");
 }
+async function createPaymentQrForOrder(order: any) {
+  if (!order?.id) return alert("Order not found");
+
+  const amount = Number(order.extra_due || order.total || 0);
+
+  if (!amount || amount <= 0) {
+    return alert("Invalid payment amount");
+  }
+
+  setLoading(true);
+
+  const res = await fetch("/api/razorpay/create-payment-qr", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      amount,
+      customer_order_id: order.id,
+    }),
+  });
+
+  const data = await res.json();
+
+  setLoading(false);
+
+  if (!data.id) {
+    return alert(data.error || "Payment QR create failed");
+  }
+
+  await supabase
+    .from("customer_orders")
+    .update({
+      razorpay_qr_id: data.id,
+      razorpay_qr_image: data.image_url,
+      payment_qr_status: "created",
+    })
+    .eq("id", order.id);
+
+  setSelectedPaymentQr({
+    orderId: order.id,
+    amount,
+    image: data.image_url,
+  });
+
+  loadData(profile?.role === "admin");
+}
 async function addProductToCustomerOrder(order: any) {
   if (!selectedProductIdForOrder) {
     return alert("Product select karo");
@@ -1648,6 +1696,32 @@ if (customerTableSlug) {
 const isStaff = profile?.role === "staff";
   return (
     <div className="min-h-screen bg-gray-100 p-5 text-black">
+      {selectedPaymentQr && (
+  <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+    <div className="bg-white p-6 rounded-xl text-center max-w-sm w-full">
+      <h2 className="text-2xl font-bold mb-3">
+        Scan & Pay
+      </h2>
+
+      <p className="mb-2 font-bold">
+        Amount: ₹{selectedPaymentQr.amount}
+      </p>
+
+      <img
+        src={selectedPaymentQr.image}
+        alt="Payment QR"
+        className="w-72 h-72 object-contain mx-auto border rounded"
+      />
+
+      <button
+        onClick={() => setSelectedPaymentQr(null)}
+        className="bg-red-600 text-white px-5 py-2 rounded mt-4"
+      >
+        Close
+      </button>
+    </div>
+  </div>
+)}
       <div className="flex justify-between items-center mb-5">
         <h1 className="text-3xl font-bold">
           {settings.cafe_name || "Zenkai Kitchen"} POS
@@ -2317,6 +2391,14 @@ const isStaff = profile?.role === "staff";
     order.order_status !== "completed" &&
     order.order_status !== "cancelled" && (
       <>
+      {order.payment_status !== "verified" && (
+  <button
+    onClick={() => createPaymentQrForOrder(order)}
+    className="bg-purple-600 text-white px-3 py-1 rounded mr-2 mb-1"
+  >
+    Show Payment QR
+  </button>
+)}
 <button
   disabled={order.payment_status !== "verified"}
   onClick={() =>
