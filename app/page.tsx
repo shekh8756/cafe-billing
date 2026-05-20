@@ -1919,15 +1919,17 @@ return (
               {products.map((p) => {
                 const productType = String(p.type || "").toLowerCase().trim();
                 const isVeg = productType === "veg";
-
+                const cartItem = cart.find((i) => i.id === p.id);
                 return (
                   <div
                     key={p.id}
-                    className={`p-4 rounded-xl shadow border transition ${
-                      isVeg
-                        ? "bg-green-50 border-green-300"
-                        : "bg-red-50 border-red-300"
-                    }`}
+                    className={`p-4 rounded-xl shadow border transition relative ${
+  cartItem
+    ? "ring-4 ring-blue-500 bg-blue-50 scale-[1.02]"
+    : isVeg
+    ? "bg-green-50 border-green-300"
+    : "bg-red-50 border-red-300"
+}`}
                   >
                     <img
                       src={p.image}
@@ -1952,7 +1954,18 @@ return (
                     </span>
 
                     <br />
+                     {cartItem && (
+  <div className="absolute top-2 right-2 bg-blue-600 text-white px-3 py-1 rounded-full text-sm font-bold">
+    Selected x{cartItem.qty}
+  </div>
+)}
 
+<button
+  onClick={() => addToCart(p)}
+  className="bg-blue-600 text-white px-4 py-2 rounded"
+>
+  Add
+</button>
                     <button
                       onClick={() => addToCart(p)}
                       className="bg-blue-600 text-white px-4 py-2 mt-2 rounded"
