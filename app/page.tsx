@@ -103,27 +103,37 @@ useEffect(() => {
 
 useEffect(() => {
   if (!user) return;
-  useEffect(() => {
+useEffect(() => {
   if (!selectedPaymentQr?.orderId) return;
 
   const interval = setInterval(async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("customer_orders")
       .select("payment_status, order_status")
       .eq("id", selectedPaymentQr.orderId)
-      .single();
+      .maybeSingle();
 
-    if (data?.payment_status === "verified" || data?.order_status === "paid") {
+    if (error) {
+      console.log("Payment status check error:", error.message);
+      return;
+    }
+
+    if (
+      data?.payment_status === "verified" ||
+      data?.payment_status === "paid" ||
+      data?.order_status === "paid" ||
+      data?.order_status === "completed"
+    ) {
       clearInterval(interval);
       setSelectedPaymentQr(null);
       setTab("qr-orders");
+      await loadData(profile?.role === "admin");
       alert("Payment successful. Order QR Orders me aa gaya.");
-      loadData(profile?.role === "admin");
     }
   }, 3000);
 
   return () => clearInterval(interval);
-}, [selectedPaymentQr]);
+}, [selectedPaymentQr, profile]);
   if (customerTableSlug) return;
 
   const interval = setInterval(() => {
