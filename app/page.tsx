@@ -103,6 +103,27 @@ useEffect(() => {
 
 useEffect(() => {
   if (!user) return;
+  useEffect(() => {
+  if (!selectedPaymentQr?.orderId) return;
+
+  const interval = setInterval(async () => {
+    const { data } = await supabase
+      .from("customer_orders")
+      .select("payment_status, order_status")
+      .eq("id", selectedPaymentQr.orderId)
+      .single();
+
+    if (data?.payment_status === "verified" || data?.order_status === "paid") {
+      clearInterval(interval);
+      setSelectedPaymentQr(null);
+      setTab("qr-orders");
+      alert("Payment successful. Order QR Orders me aa gaya.");
+      loadData(profile?.role === "admin");
+    }
+  }, 3000);
+
+  return () => clearInterval(interval);
+}, [selectedPaymentQr]);
   if (customerTableSlug) return;
 
   const interval = setInterval(() => {
@@ -1736,7 +1757,9 @@ return (
   alt="Payment QR"
   className="w-[340px] h-[340px] object-cover object-center mx-auto border rounded"
 />
-
+<p className="text-sm text-gray-600 mt-3">
+  Payment hone ke baad ye popup automatically close ho jayega.
+</p>
           <button
             onClick={() => setSelectedPaymentQr(null)}
             className="bg-red-600 text-white px-5 py-2 rounded mt-4"
