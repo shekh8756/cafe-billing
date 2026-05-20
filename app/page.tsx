@@ -969,6 +969,52 @@ async function updateCustomerOrderItemQty(order: any, item: any, newQty: number)
   await recalculateCustomerOrderTotal(order.id);
   loadData(profile?.role === "admin");
 }
+async function createCounterPaymentQr() {
+  if (cart.length === 0) return alert("Pehle product add karo");
+
+  const pendingItems = cart.map((item) => ({
+    product_name: item.name,
+    price: Number(item.price),
+    qty: item.qty,
+    total: Number(item.price) * item.qty,
+  }));
+
+  const { data: pendingOrder, error: pendingOrderError } =
+    await supabase
+      .from("customer_orders")
+      .insert({
+        table_name: "Counter Order",
+        customer_name: "Counter Customer",
+        customer_phone: "",
+        payment_status: "pending_payment",
+        order_status: "pending",
+        payment_method: "Razorpay QR",
+        transaction_id: "",
+        subtotal,
+        tax,
+        total,
+        original_paid_amount: total,
+        extra_due: 0,
+        extra_payment_note: "",
+      })
+      .select()
+      .single();
+
+  if (pendingOrderError || !pendingOrder) {
+    return alert("Counter order create failed");
+  }
+
+  await supabase.from("customer_order_items").insert(
+    pendingItems.map((item) => ({
+      customer_order_id: pendingOrder.id,
+      ...item,
+    }))
+  );
+
+  await createPaymentQrForOrder(pendingOrder);
+
+  setCart([]);
+}
 async function createPaymentQrForOrder(order: any) {
   if (!order?.id) return alert("Order not found");
 
@@ -1696,32 +1742,37 @@ if (customerTableSlug) {
 const isStaff = profile?.role === "staff";
   return (
     <div className="min-h-screen bg-gray-100 p-5 text-black">
-      {selectedPaymentQr && (
-  <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-    <div className="bg-white p-6 rounded-xl text-center max-w-sm w-full">
-      <h2 className="text-2xl font-bold mb-3">
-        Scan & Pay
-      </h2>
+      return (
+  <>
+    {selectedPaymentQr && (
+      <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+        <div className="bg-white p-6 rounded-xl text-center max-w-sm w-full">
+          <h2 className="text-2xl font-bold mb-3">Scan & Pay</h2>
 
-      <p className="mb-2 font-bold">
-        Amount: ₹{selectedPaymentQr.amount}
-      </p>
+          <p className="mb-2 font-bold">
+            Amount: ₹{selectedPaymentQr.amount}
+          </p>
 
-      <img
-        src={selectedPaymentQr.image}
-        alt="Payment QR"
-        className="w-72 h-72 object-contain mx-auto border rounded"
-      />
+          <img
+            src={selectedPaymentQr.image}
+            alt="Payment QR"
+            className="w-72 h-72 object-contain mx-auto border rounded"
+          />
 
-      <button
-        onClick={() => setSelectedPaymentQr(null)}
-        className="bg-red-600 text-white px-5 py-2 rounded mt-4"
-      >
-        Close
-      </button>
-    </div>
-  </div>
-)}
+          <button
+            onClick={() => setSelectedPaymentQr(null)}
+            className="bg-red-600 text-white px-5 py-2 rounded mt-4"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    )}
+
+    <div className="min-h-screen bg-gray-100 p-5 text-black">
+          </div>
+  </>
+  );
       <div className="flex justify-between items-center mb-5">
         <h1 className="text-3xl font-bold">
           {settings.cafe_name || "Zenkai Kitchen"} POS
@@ -1974,7 +2025,13 @@ const isStaff = profile?.role === "staff";
               <option>Cash</option>
               <option>UPI Online</option>
             </select>
-
+             <button
+              disabled={loading || cart.length === 0}
+              onClick={() => createCounterPaymentQr()}
+              className="w-full bg-purple-600 text-white p-3 rounded mt-4"
+             >
+                 Generate Payment QR
+            </button>
             <button
               disabled={loading}
               onClick={saveOrder}
