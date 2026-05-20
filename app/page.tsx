@@ -1731,11 +1731,11 @@ return (
             Amount: ₹{selectedPaymentQr.amount}
           </p>
 
-          <img
-            src={selectedPaymentQr.image}
-            alt="Payment QR"
-            className="w-72 h-72 object-contain mx-auto border rounded"
-          />
+         <img
+  src={selectedPaymentQr.image}
+  alt="Payment QR"
+  className="w-[340px] h-[340px] object-cover object-center mx-auto border rounded"
+/>
 
           <button
             onClick={() => setSelectedPaymentQr(null)}
