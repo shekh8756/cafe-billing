@@ -78,27 +78,6 @@ const [selectedCustomerOrderId, setSelectedCustomerOrderId] = useState("");
 const [selectedProductIdForOrder, setSelectedProductIdForOrder] = useState("");
 const [extraPaymentNote, setExtraPaymentNote] = useState("");
 const [selectedPaymentQr, setSelectedPaymentQr] = useState<any>(null);
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const tableSlug = params.get("table");
-
-    if (tableSlug) {
-      setCustomerTableSlug(tableSlug);
-      loadCustomerPage(tableSlug);
-      return;
-    }
-
-    checkUser();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(() => {
-      checkUser();
-    });
-    return () => {
-    subscription.unsubscribe();
-    };
-    }, []); 
 useEffect(() => {
   const params = new URLSearchParams(window.location.search);
   const tableSlug = params.get("table");
@@ -1740,9 +1719,8 @@ if (customerTableSlug) {
 
   const isAdmin = profile?.role === "admin";
 const isStaff = profile?.role === "staff";
-  return (
-    <div className="min-h-screen bg-gray-100 p-5 text-black">
-      return (
+return (
+  
   <>
     {selectedPaymentQr && (
       <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
@@ -1770,9 +1748,7 @@ const isStaff = profile?.role === "staff";
     )}
 
     <div className="min-h-screen bg-gray-100 p-5 text-black">
-          </div>
-  </>
-  );
+
       <div className="flex justify-between items-center mb-5">
         <h1 className="text-3xl font-bold">
           {settings.cafe_name || "Zenkai Kitchen"} POS
@@ -1780,11 +1756,19 @@ const isStaff = profile?.role === "staff";
 
         <div className="flex gap-3 items-center">
           <div className="text-right">
-            <div className="font-bold">{profile?.full_name || user.email}</div>
-            <div className="text-sm text-gray-600">{profile?.role || "staff"}</div>
+            <div className="font-bold">
+              {profile?.full_name || user.email}
+            </div>
+
+            <div className="text-sm text-gray-600">
+              {profile?.role || "staff"}
+            </div>
           </div>
 
-          <button onClick={logout} className="bg-red-600 text-white px-4 py-2 rounded">
+          <button
+            onClick={logout}
+            className="bg-red-600 text-white px-4 py-2 rounded"
+          >
             Logout
           </button>
         </div>
@@ -3028,5 +3012,6 @@ const isStaff = profile?.role === "staff";
         </div>
       )}
     </div>
-  );
+  </>
+);
 }
