@@ -103,6 +103,17 @@ useEffect(() => {
 
 useEffect(() => {
   if (!user) return;
+  if (customerTableSlug) return;
+
+  const interval = setInterval(() => {
+    loadData(profile?.role === "admin");
+  }, 5000);
+
+  return () => {
+    clearInterval(interval);
+  };
+}, [user, profile, soundEnabled, customerTableSlug]);
+
 useEffect(() => {
   if (!selectedPaymentQr?.orderId) return;
 
@@ -113,10 +124,7 @@ useEffect(() => {
       .eq("id", selectedPaymentQr.orderId)
       .maybeSingle();
 
-    if (error) {
-      console.log("Payment status check error:", error.message);
-      return;
-    }
+    if (error) return;
 
     if (
       data?.payment_status === "verified" ||
@@ -134,16 +142,6 @@ useEffect(() => {
 
   return () => clearInterval(interval);
 }, [selectedPaymentQr, profile]);
-  if (customerTableSlug) return;
-
-  const interval = setInterval(() => {
-    loadData(profile?.role === "admin");
-  }, 5000);
-
-  return () => {
-    clearInterval(interval);
-  };
-}, [user, profile, soundEnabled, customerTableSlug]);
 
   async function loadCustomerPage(tableSlug: string) {
     const { data: productsData } = await supabase
