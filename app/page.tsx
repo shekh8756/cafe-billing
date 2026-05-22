@@ -368,7 +368,18 @@ setClosingReports(closingReportsData || []);
     alert("User is now admin");
     loadData(true);
   }
+async function makeStaff(id: string) {
+  if (!confirm("Is admin ko staff banana hai?")) return;
 
+  const { error } = await supabase
+    .from("profiles")
+    .update({ role: "staff", approved: true, status: "approved" })
+    .eq("id", id);
+
+  if (error) return alert(error.message);
+  alert("User is now staff");
+  loadData(true);
+}
   async function saveSettings() {
     const { error } = await supabase
       .from("cafe_settings")
@@ -2161,6 +2172,7 @@ return (
                 <tr className="bg-gray-200">
                   <th className="p-2 border">Staff</th>
                   <th className="p-2 border">Status</th>
+                  <th className="p-2 border">Role</th>
                   <th className="p-2 border">Today</th>
                   <th className="p-2 border">Yesterday</th>
                   <th className="p-2 border">Week</th>
@@ -2178,6 +2190,9 @@ return (
                       <div className="text-xs text-gray-600">{staff.email}</div>
                     </td>
                     <td className="p-2 border">{staff.approved ? "Approved" : staff.status || "Pending"}</td>
+                    <td className="p-2 border font-bold">
+  {staff.role === "admin" ? "Admin" : "Staff"}
+</td>
                     <td className="p-2 border">₹{staff.today}</td>
                     <td className="p-2 border">₹{staff.yesterday}</td>
                     <td className="p-2 border">₹{staff.week}</td>
@@ -2201,12 +2216,21 @@ return (
                           Block
                         </button>
                       )}
-                      <button
-                        onClick={() => makeAdmin(staff.id)}
-                        className="bg-blue-600 text-white px-3 py-1 rounded mb-1"
-                      >
-                        Make Admin
-                      </button>
+{staff.role === "admin" ? (
+  <button
+    onClick={() => makeStaff(staff.id)}
+    className="bg-yellow-600 text-white px-3 py-1 rounded mr-2 mb-1"
+  >
+    Make Staff
+  </button>
+) : (
+  <button
+    onClick={() => makeAdmin(staff.id)}
+    className="bg-blue-600 text-white px-3 py-1 rounded mr-2 mb-1"
+  >
+    Make Admin
+  </button>
+)}
                     </td>
                   </tr>
                 ))}
