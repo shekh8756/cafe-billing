@@ -1518,8 +1518,8 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
       .reduce((s, o) => s + Number(o.total || 0), 0);
 
     const userDetails = profiles
-      .filter((p) => p.role !== "admin")
-      .map((staff) => {
+  .filter((p) => p.approved === true)
+  .map((staff) => {
         const staffOrders = filteredOrders.filter((o) => o.user_id === staff.id || o.user_email === staff.email);
         const staffItems = itemSalesRows.filter((row) => row.staff === staff.email);
         return {
