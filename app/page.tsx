@@ -34,7 +34,54 @@ const [closingNote, setClosingNote] = useState("");
   const [toDate, setToDate] = useState("");
   const [itemHistoryPage, setItemHistoryPage] = useState(1);
   const itemHistoryPerPage = 10;
+const SHIFT_START_HOUR = 16; // 4 PM
+const SHIFT_END_HOUR = 5; // 5 AM
 
+function formatDateLocal(date: Date) {
+  return date.toLocaleDateString("en-CA");
+}
+
+function getBusinessDate(dateInput: any = new Date()) {
+  const d = new Date(dateInput);
+  if (d.getHours() < SHIFT_END_HOUR) {
+    d.setDate(d.getDate() - 1);
+  }
+  return formatDateLocal(d);
+}
+
+function getShiftRange(businessDate: string) {
+  const start = new Date(`${businessDate}T16:00:00`);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  end.setHours(5, 0, 0, 0);
+
+  return { start, end };
+}
+
+function isInBusinessDate(row: any, businessDate: string) {
+  if (row.business_date) return row.business_date === businessDate;
+
+  const created = new Date(row.created_at || row.expense_date);
+  const { start, end } = getShiftRange(businessDate);
+
+  return created >= start && created < end;
+}
+
+function getYesterdayBusinessDate() {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return getBusinessDate(d);
+}
+
+function getLastNDaysBusinessDates(days: number) {
+  const list: string[] = [];
+  for (let i = 0; i < days; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    list.push(getBusinessDate(d));
+  }
+  return list;
+}
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<any>(null);
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
@@ -406,11 +453,12 @@ async function addExpense() {
   if (!expenseForm.amount) return alert("Expense amount daalo");
 
   const { error } = await supabase.from("expenses").insert({
-    title: expenseForm.title,
-    amount: Number(expenseForm.amount),
-    expense_date: expenseForm.expense_date,
-    note: expenseForm.note,
-  });
+  title: expenseForm.title,
+  amount: Number(expenseForm.amount),
+  expense_date: expenseForm.expense_date,
+  business_date: getBusinessDate(new Date(`${expenseForm.expense_date}T16:00:00`)),
+  note: expenseForm.note,
+});
 
   if (error) return alert(error.message);
 
@@ -425,51 +473,84 @@ async function addExpense() {
   loadData(true);
 }
 
-async function saveDailyClosingReport() {
-  const today = new Date().toISOString().slice(0, 10);
+async function saveDailyClosingReport(targetBusinessDate = getBusinessDate()) {
+  const businessDate = targetBusinessDate;
 
-  const todayOrders = orders.filter(
-    (o) => new Date(o.created_at).toISOString().slice(0, 10) === today
-  );
+  const shiftOrders = orders.filter((o) => isInBusinessDate(o, businessDate));
 
-  const cashSale = todayOrders
+  const cashSale = shiftOrders
     .filter((o) => String(o.payment_by || "").toLowerCase().includes("cash"))
     .reduce((s, o) => s + Number(o.total || 0), 0);
 
-  const upiSale = todayOrders
+  const upiSale = shiftOrders
     .filter((o) => String(o.payment_by || "").toLowerCase().includes("upi"))
     .reduce((s, o) => s + Number(o.total || 0), 0);
 
   const totalSale = cashSale + upiSale;
 
-  const todayExpenses = expenses.filter(
-    (e) => String(e.expense_date) === today
-  );
+  const shiftExpenses = expenses.filter((e) => {
+    if (e.business_date) return e.business_date === businessDate;
+    return String(e.expense_date) === businessDate;
+  });
 
-  const totalExpense = todayExpenses.reduce(
+  const totalExpense = shiftExpenses.reduce(
     (s, e) => s + Number(e.amount || 0),
     0
   );
 
   const netProfit = totalSale - totalExpense;
 
-  const { error } = await supabase.from("daily_closing_reports").upsert({
-    closing_date: today,
-    cash_sale: cashSale,
-    upi_sale: upiSale,
-    total_sale: totalSale,
-    total_expense: totalExpense,
-    net_profit: netProfit,
-    note: closingNote,
-    created_by: user?.email,
-  });
+  const { error } = await supabase.from("daily_closing_reports").upsert(
+    {
+      business_date: businessDate,
+      closing_date: businessDate,
+      cash_sale: cashSale,
+      upi_sale: upiSale,
+      total_sale: totalSale,
+      total_expense: totalExpense,
+      net_profit: netProfit,
+      note: closingNote || "Auto closing",
+      created_by: user?.email,
+    },
+    {
+      onConflict: "business_date",
+    }
+  );
 
   if (error) return alert(error.message);
 
   setClosingNote("");
-  alert("Daily closing report saved");
   loadData(true);
 }
+
+useEffect(() => {
+  if (!user || profile?.role !== "admin") return;
+
+  const autoClose = async () => {
+    const now = new Date();
+
+    if (now.getHours() >= SHIFT_END_HOUR && now.getHours() < SHIFT_START_HOUR) {
+      const yesterdayBusinessDate = getYesterdayBusinessDate();
+
+      const alreadyClosed = closingReports.find(
+        (r) =>
+          r.business_date === yesterdayBusinessDate ||
+          r.closing_date === yesterdayBusinessDate
+      );
+
+      if (!alreadyClosed) {
+        await saveDailyClosingReport(yesterdayBusinessDate);
+      }
+    }
+  };
+
+  autoClose();
+
+  const interval = setInterval(autoClose, 5 * 60 * 1000);
+
+  return () => clearInterval(interval);
+}, [user, profile, orders, expenses, closingReports]);
+
   async function addProduct() {
     if (!newProduct.name || !newProduct.price) {
       return alert("Product name aur price daalo");
@@ -611,6 +692,7 @@ async function saveDailyClosingReport() {
         payment_by: paymentBy,
         user_id: user?.id,
         user_email: user?.email,
+        business_date: getBusinessDate(),
       })
       .select()
       .single();
@@ -1240,6 +1322,9 @@ if (freshOrder?.order_status === "completed" && !freshOrder?.pos_order_id) {
       payment_by: "UPI Online",
       user_id: user?.id,
       user_email: user?.email,
+
+      business_date: getBusinessDate(customerOrder.created_at),
+
     })
     .select()
     .single();
@@ -1446,146 +1531,219 @@ ${billTax > 0 ? `<tr><td>GST</td><td class="right">₹${billTax}</td></tr>` : ""
   }, [orders, fromDate, toDate]);
 
   const analytics: any = useMemo(() => {
+  const sum = (list: any[]) =>
+    list.reduce((s, o) => s + Number(o.total || 0), 0);
+
+  const todayBusinessDate = getBusinessDate();
+  const yesterdayBusinessDate = getYesterdayBusinessDate();
+  const weekBusinessDates = getLastNDaysBusinessDates(7);
+  const monthBusinessDates = getLastNDaysBusinessDates(30);
+
+  const getOrderBusinessDate = (o: any) =>
+    o.business_date || getBusinessDate(o.created_at);
+
+  const getExpenseBusinessDate = (e: any) =>
+    e.business_date || String(e.expense_date);
+
+  const todayOrders = orders.filter(
+    (o) => getOrderBusinessDate(o) === todayBusinessDate
+  );
+
+  const yesterdayOrders = orders.filter(
+    (o) => getOrderBusinessDate(o) === yesterdayBusinessDate
+  );
+
+  const weekOrders = orders.filter((o) =>
+    weekBusinessDates.includes(getOrderBusinessDate(o))
+  );
+
+  const monthOrders = orders.filter((o) =>
+    monthBusinessDates.includes(getOrderBusinessDate(o))
+  );
+
+  const yearOrders = orders.filter((o) => {
+    const d = new Date(o.created_at);
     const now = new Date();
+    return d.getFullYear() === now.getFullYear();
+  });
 
-    const isToday = (date: string) =>
-      new Date(date).toDateString() === now.toDateString();
+  const todayExpense = expenses
+    .filter((e) => getExpenseBusinessDate(e) === todayBusinessDate)
+    .reduce((s, e) => s + Number(e.amount || 0), 0);
 
-    const isYesterday = (date: string) => {
-      const d = new Date(date);
-      const y = new Date();
-      y.setDate(now.getDate() - 1);
-      return d.toDateString() === y.toDateString();
-    };
+  const yesterdayExpense = expenses
+    .filter((e) => getExpenseBusinessDate(e) === yesterdayBusinessDate)
+    .reduce((s, e) => s + Number(e.amount || 0), 0);
 
-    const isLast7Days = (date: string) =>
-      (now.getTime() - new Date(date).getTime()) / (1000 * 60 * 60 * 24) <= 7;
+  const weekExpense = expenses
+    .filter((e) => weekBusinessDates.includes(getExpenseBusinessDate(e)))
+    .reduce((s, e) => s + Number(e.amount || 0), 0);
 
-    const isThisMonth = (date: string) => {
-      const d = new Date(date);
-      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-    };
+  const monthExpense = expenses
+    .filter((e) => monthBusinessDates.includes(getExpenseBusinessDate(e)))
+    .reduce((s, e) => s + Number(e.amount || 0), 0);
 
-    const isThisYear = (date: string) => {
-      const d = new Date(date);
-      return d.getFullYear() === now.getFullYear();
-    };
+  const totalExpense = expenses.reduce(
+    (s, e) => s + Number(e.amount || 0),
+    0
+  );
 
-    const sum = (list: any[]) =>
-      list.reduce((s, o) => s + Number(o.total || 0), 0);
+  const filteredTotal = sum(filteredOrders);
+  const filteredTax = filteredOrders.reduce(
+    (s, o) => s + Number(o.tax || 0),
+    0
+  );
 
-    const todayOrders = orders.filter((o) => isToday(o.created_at));
-    const yesterdayOrders = orders.filter((o) => isYesterday(o.created_at));
-    const weekOrders = orders.filter((o) => isLast7Days(o.created_at));
-    const monthOrders = orders.filter((o) => isThisMonth(o.created_at));
-    const yearOrders = orders.filter((o) => isThisYear(o.created_at));
+  const filteredOrderIds = new Set(filteredOrders.map((o) => o.id));
 
-    const itemMap: any = {};
-    orderItems.forEach((item) => {
-      if (!itemMap[item.product_name]) {
-        itemMap[item.product_name] = { name: item.product_name, qty: 0, total: 0 };
-      }
-      itemMap[item.product_name].qty += Number(item.qty || 0);
-      itemMap[item.product_name].total += Number(item.total || 0);
+  const itemSalesRows = orderItems
+    .map((item) => {
+      const order = orders.find((o) => o.id === item.order_id);
+      return {
+        id: item.id,
+        item: item.product_name,
+        qty: Number(item.qty || 0),
+        price: Number(item.price || 0),
+        total: Number(item.total || 0),
+        date: order?.created_at || item.created_at,
+        payment: order?.payment_by || "-",
+        staff: order?.user_email || "-",
+        order_id: item.order_id,
+      };
+    })
+    .filter((row) => filteredOrderIds.has(row.order_id));
+
+  const reportItemMap: any = {};
+  itemSalesRows.forEach((item) => {
+    if (!reportItemMap[item.item]) {
+      reportItemMap[item.item] = {
+        name: item.item,
+        qty: 0,
+        total: 0,
+      };
+    }
+
+    reportItemMap[item.item].qty += Number(item.qty || 0);
+    reportItemMap[item.item].total += Number(item.total || 0);
+  });
+
+  const itemMap: any = {};
+  orderItems.forEach((item) => {
+    if (!itemMap[item.product_name]) {
+      itemMap[item.product_name] = {
+        name: item.product_name,
+        qty: 0,
+        total: 0,
+      };
+    }
+
+    itemMap[item.product_name].qty += Number(item.qty || 0);
+    itemMap[item.product_name].total += Number(item.total || 0);
+  });
+
+  const cashTotal = filteredOrders
+    .filter((o) =>
+      String(o.payment_by || "").toLowerCase().includes("cash")
+    )
+    .reduce((s, o) => s + Number(o.total || 0), 0);
+
+  const upiTotal = filteredOrders
+    .filter((o) =>
+      String(o.payment_by || "").toLowerCase().includes("upi")
+    )
+    .reduce((s, o) => s + Number(o.total || 0), 0);
+
+  const userDetails = profiles
+    .filter((p) => p.approved === true)
+    .map((staff) => {
+      const staffOrders = filteredOrders.filter(
+        (o) => o.user_id === staff.id || o.user_email === staff.email
+      );
+
+      const staffItems = itemSalesRows.filter(
+        (row) => row.staff === staff.email
+      );
+
+      return {
+        ...staff,
+        name: staff.full_name || staff.email,
+        orderCount: staffOrders.length,
+        itemQty: staffItems.reduce((s, i) => s + Number(i.qty || 0), 0),
+        today: sum(
+          staffOrders.filter(
+            (o) => getOrderBusinessDate(o) === todayBusinessDate
+          )
+        ),
+        yesterday: sum(
+          staffOrders.filter(
+            (o) => getOrderBusinessDate(o) === yesterdayBusinessDate
+          )
+        ),
+        week: sum(
+          staffOrders.filter((o) =>
+            weekBusinessDates.includes(getOrderBusinessDate(o))
+          )
+        ),
+        month: sum(
+          staffOrders.filter((o) =>
+            monthBusinessDates.includes(getOrderBusinessDate(o))
+          )
+        ),
+        year: sum(yearOrders.filter((o) => o.user_email === staff.email)),
+        total: sum(staffOrders),
+        totalSale: sum(staffOrders),
+      };
     });
 
-    const filteredTotal = sum(filteredOrders);
-    const filteredTax = filteredOrders.reduce((s, o) => s + Number(o.tax || 0), 0);
+  return {
+    todayBusinessDate,
 
-    const filteredOrderIds = new Set(filteredOrders.map((o) => o.id));
+    todaySale: sum(todayOrders),
+    yesterdaySale: sum(yesterdayOrders),
+    weekSale: sum(weekOrders),
+    monthSale: sum(monthOrders),
+    yearSale: sum(yearOrders),
+    totalSale: sum(orders),
 
-    const itemSalesRows = orderItems
-      .map((item) => {
-        const order = orders.find((o) => o.id === item.order_id);
-        return {
-          id: item.id,
-          item: item.product_name,
-          qty: Number(item.qty || 0),
-          price: Number(item.price || 0),
-          total: Number(item.total || 0),
-          date: order?.created_at || item.created_at,
-          payment: order?.payment_by || "-",
-          staff: order?.user_email || "-",
-          order_id: item.order_id,
-        };
+    todayExpense,
+    yesterdayExpense,
+    weekExpense,
+    monthExpense,
+    totalExpense,
+
+    todayProfit: sum(todayOrders) - todayExpense,
+    yesterdayProfit: sum(yesterdayOrders) - yesterdayExpense,
+    weekProfit: sum(weekOrders) - weekExpense,
+    monthProfit: sum(monthOrders) - monthExpense,
+    totalProfit: sum(orders) - totalExpense,
+
+    filteredTotal,
+    filteredTax,
+    filteredCount: filteredOrders.length,
+
+    itemWise: Object.values(itemMap),
+    staffSales: userDetails,
+    itemSalesRows,
+    reportItemWise: Object.values(reportItemMap),
+    cashTotal,
+    upiTotal,
+
+    filteredExpense: expenses
+      .filter((e) => {
+        if (!fromDate && !toDate) return true;
+
+        const d = new Date(e.expense_date);
+
+        if (fromDate && d < new Date(fromDate)) return false;
+        if (toDate && d > new Date(toDate)) return false;
+
+        return true;
       })
-      .filter((row) => filteredOrderIds.has(row.order_id));
+      .reduce((s, e) => s + Number(e.amount || 0), 0),
 
-    const reportItemMap: any = {};
-    itemSalesRows.forEach((item) => {
-      if (!reportItemMap[item.item]) {
-        reportItemMap[item.item] = { name: item.item, qty: 0, total: 0 };
-      }
-      reportItemMap[item.item].qty += Number(item.qty || 0);
-      reportItemMap[item.item].total += Number(item.total || 0);
-    });
-
-    const cashTotal = filteredOrders
-      .filter((o) => String(o.payment_by || "").toLowerCase().includes("cash"))
-      .reduce((s, o) => s + Number(o.total || 0), 0);
-
-    const upiTotal = filteredOrders
-      .filter((o) => String(o.payment_by || "").toLowerCase().includes("upi"))
-      .reduce((s, o) => s + Number(o.total || 0), 0);
-
-    const userDetails = profiles
-  .filter((p) => p.approved === true)
-  .map((staff) => {
-        const staffOrders = filteredOrders.filter((o) => o.user_id === staff.id || o.user_email === staff.email);
-        const staffItems = itemSalesRows.filter((row) => row.staff === staff.email);
-        return {
-          ...staff,
-          name: staff.full_name || staff.email,
-          orderCount: staffOrders.length,
-          itemQty: staffItems.reduce((s, i) => s + Number(i.qty || 0), 0),
-          today: sum(staffOrders.filter((o) => isToday(o.created_at))),
-          yesterday: sum(staffOrders.filter((o) => isYesterday(o.created_at))),
-          week: sum(staffOrders.filter((o) => isLast7Days(o.created_at))),
-          month: sum(staffOrders.filter((o) => isThisMonth(o.created_at))),
-          year: sum(staffOrders.filter((o) => isThisYear(o.created_at))),
-          total: sum(staffOrders),
-          totalSale: sum(staffOrders),
-        };
-      });
-
-    return {
-      todaySale: sum(todayOrders),
-      yesterdaySale: sum(yesterdayOrders),
-      weekSale: sum(weekOrders),
-      monthSale: sum(monthOrders),
-      yearSale: sum(yearOrders),
-      totalSale: sum(orders),
-      filteredTotal,
-      filteredTax,
-      filteredCount: filteredOrders.length,
-      itemWise: Object.values(itemMap),
-      staffSales: userDetails,
-      itemSalesRows,
-      reportItemWise: Object.values(reportItemMap),
-      cashTotal,
-      upiTotal,
-
-      totalExpense: expenses.reduce(
-  (s, e) => s + Number(e.amount || 0),
-  0
-),
-
-filteredExpense: expenses
-  .filter((e) => {
-    if (!fromDate && !toDate) return true;
-
-    const d = new Date(e.expense_date);
-
-    if (fromDate && d < new Date(fromDate)) return false;
-    if (toDate && d > new Date(toDate)) return false;
-
-    return true;
-  })
-  .reduce((s, e) => s + Number(e.amount || 0), 0),
-
-userDetails,
-    };
-  }, [orders, orderItems, filteredOrders, profiles, expenses, fromDate, toDate]);
+    userDetails,
+  };
+}, [orders, orderItems, filteredOrders, profiles, expenses, fromDate, toDate]);
 
 if (customerTableSlug) {
   return (
@@ -2682,7 +2840,7 @@ return (
   />
 
   <button
-    onClick={saveDailyClosingReport}
+    onClick={() => saveDailyClosingReport()}
     className="bg-black text-white px-5 py-2 rounded mt-4"
   >
     Save Daily Closing
