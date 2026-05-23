@@ -3158,37 +3158,54 @@ return (
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
-            <div className="bg-white p-4 rounded-xl shadow">
-              Filtered Orders
-              <br />
-              <b>{analytics.filteredCount}</b>
-            </div>
+          <div className="bg-black text-white p-4 rounded-xl shadow mb-4">
+  <div className="text-xl font-bold">Current Shift Report</div>
+  <div className="text-sm">
+    Business Date: {analytics.todayBusinessDate} | Time: 4:00 PM to 5:00 AM
+  </div>
+</div>
 
-            <div className="bg-white p-4 rounded-xl shadow">
-              Filtered GST
-              <br />
-              <b>₹{analytics.filteredTax}</b>
-            </div>
+<div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-5">
+  <div className="bg-white p-4 rounded-xl shadow border-l-4 border-green-600">
+    <div className="text-sm text-gray-600">Today Sale</div>
+    <div className="text-2xl font-bold">₹{analytics.todaySale}</div>
+    <div className="text-xs text-gray-500">4 PM - 5 AM</div>
+  </div>
 
-            <div className="bg-white p-4 rounded-xl shadow">
-              Cash Sale
-              <br />
-              <b>₹{analytics.cashTotal}</b>
-            </div>
+  <div className="bg-white p-4 rounded-xl shadow border-l-4 border-red-600">
+    <div className="text-sm text-gray-600">Today Expense</div>
+    <div className="text-2xl font-bold">₹{analytics.todayExpense}</div>
+  </div>
 
-            <div className="bg-white p-4 rounded-xl shadow">
-              UPI Sale
-              <br />
-              <b>₹{analytics.upiTotal}</b>
-            </div>
+  <div className="bg-white p-4 rounded-xl shadow border-l-4 border-blue-600">
+    <div className="text-sm text-gray-600">Today Profit</div>
+    <div className="text-2xl font-bold">₹{analytics.todayProfit}</div>
+  </div>
 
-            <div className="bg-white p-4 rounded-xl shadow">
-              Filtered Total
-              <br />
-              <b>₹{analytics.filteredTotal}</b>
-            </div>
-          </div>
+  <div className="bg-white p-4 rounded-xl shadow">
+    <div className="text-sm text-gray-600">Yesterday Sale</div>
+    <div className="text-2xl font-bold">₹{analytics.yesterdaySale}</div>
+    <div className="text-xs">Profit ₹{analytics.yesterdayProfit}</div>
+  </div>
+
+  <div className="bg-white p-4 rounded-xl shadow">
+    <div className="text-sm text-gray-600">Week Sale</div>
+    <div className="text-2xl font-bold">₹{analytics.weekSale}</div>
+    <div className="text-xs">Profit ₹{analytics.weekProfit}</div>
+  </div>
+
+  <div className="bg-white p-4 rounded-xl shadow">
+    <div className="text-sm text-gray-600">Month Sale</div>
+    <div className="text-2xl font-bold">₹{analytics.monthSale}</div>
+    <div className="text-xs">Profit ₹{analytics.monthProfit}</div>
+  </div>
+
+  <div className="bg-white p-4 rounded-xl shadow">
+    <div className="text-sm text-gray-600">Total Sale</div>
+    <div className="text-2xl font-bold">₹{analytics.totalSale}</div>
+    <div className="text-xs">Profit ₹{analytics.totalProfit}</div>
+  </div>
+</div>
 
           <div className="bg-white rounded-xl shadow overflow-auto">
             <table className="w-full border">
