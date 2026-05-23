@@ -1949,14 +1949,14 @@ return (
 
     <div className="min-h-screen bg-gray-100 p-5 text-black">
 
-      <div className="flex justify-between items-center mb-5">
-        <h1 className="text-3xl font-bold">
+      <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4 mb-5">
+        <h1 className="text-3xl font-bold leading-tight">
           {settings.cafe_name || "Zenkai Kitchen"} POS
         </h1>
 
-        <div className="flex gap-3 items-center">
-          <div className="text-right">
-            <div className="font-bold">
+        <div className="flex flex-wrap gap-3 items-center">
+          <div className="text-left md:text-right max-w-full">
+            <div className="font-bold break-all">
               {profile?.full_name || user.email}
             </div>
 
@@ -2731,33 +2731,58 @@ return (
       {tab === "reports" && isAdmin && (
         <div>
           <h2 className="text-2xl font-bold mb-4">Reports</h2>
-<div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-  <div className="bg-white p-5 rounded-xl shadow">
-    Total Expense
-    <br />
-    <b>₹{analytics.totalExpense}</b>
+<div className="bg-black text-white p-4 rounded-xl shadow mb-4">
+  <div className="text-xl font-bold">Current Shift Report</div>
+  <div className="text-sm">
+    Business Date: {analytics.todayBusinessDate} | Shift: 4 PM → 5 AM
+  </div>
+</div>
+
+<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+  <div className="bg-white p-5 rounded-xl shadow border-l-4 border-green-600">
+    <div className="text-sm text-gray-600">Today Sale</div>
+    <div className="text-3xl font-bold">₹{analytics.todaySale}</div>
+  </div>
+
+  <div className="bg-white p-5 rounded-xl shadow border-l-4 border-red-600">
+    <div className="text-sm text-gray-600">Today Expense</div>
+    <div className="text-3xl font-bold">₹{analytics.todayExpense}</div>
+  </div>
+
+  <div className="bg-white p-5 rounded-xl shadow border-l-4 border-blue-600">
+    <div className="text-sm text-gray-600">Today Profit</div>
+    <div className="text-3xl font-bold">₹{analytics.todayProfit}</div>
   </div>
 
   <div className="bg-white p-5 rounded-xl shadow">
-    Filtered Expense
-    <br />
-    <b>₹{analytics.filteredExpense}</b>
+    <div className="text-sm text-gray-600">Total Profit</div>
+    <div className="text-3xl font-bold">₹{analytics.totalProfit}</div>
+  </div>
+</div>
+
+<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+  <div className="bg-white p-5 rounded-xl shadow">
+    <div className="text-sm text-gray-600">Yesterday Sale</div>
+    <div className="text-2xl font-bold">₹{analytics.yesterdaySale}</div>
+    <div className="text-xs text-gray-500">Profit ₹{analytics.yesterdayProfit}</div>
   </div>
 
   <div className="bg-white p-5 rounded-xl shadow">
-    Net Profit
-    <br />
-    <b>
-      ₹
-      {analytics.filteredTotal -
-        analytics.filteredExpense}
-    </b>
+    <div className="text-sm text-gray-600">Week Sale</div>
+    <div className="text-2xl font-bold">₹{analytics.weekSale}</div>
+    <div className="text-xs text-gray-500">Profit ₹{analytics.weekProfit}</div>
   </div>
 
   <div className="bg-white p-5 rounded-xl shadow">
-    Total Sales
-    <br />
-    <b>₹{analytics.filteredTotal}</b>
+    <div className="text-sm text-gray-600">Month Sale</div>
+    <div className="text-2xl font-bold">₹{analytics.monthSale}</div>
+    <div className="text-xs text-gray-500">Profit ₹{analytics.monthProfit}</div>
+  </div>
+
+  <div className="bg-white p-5 rounded-xl shadow">
+    <div className="text-sm text-gray-600">Total Sale</div>
+    <div className="text-2xl font-bold">₹{analytics.totalSale}</div>
+    <div className="text-xs text-gray-500">Total Expense ₹{analytics.totalExpense}</div>
   </div>
 </div>
 
@@ -2822,28 +2847,6 @@ return (
     className="bg-red-600 text-white px-5 py-2 rounded mt-4"
   >
     Save Expense
-  </button>
-</div>
-
-<div className="bg-white p-5 rounded-xl shadow mb-6">
-  <h3 className="text-xl font-bold mb-3">
-    Daily Closing Report
-  </h3>
-
-  <textarea
-    className="w-full border p-3 rounded"
-    placeholder="Closing note..."
-    value={closingNote}
-    onChange={(e) =>
-      setClosingNote(e.target.value)
-    }
-  />
-
-  <button
-    onClick={() => saveDailyClosingReport()}
-    className="bg-black text-white px-5 py-2 rounded mt-4"
-  >
-    Save Daily Closing
   </button>
 </div>
           <div className="bg-white p-4 rounded-xl shadow mb-4 flex flex-wrap gap-3">
@@ -3122,7 +3125,7 @@ return (
 
       {tab === "records" && isAdmin && (
         <div>
-          <h2 className="text-2xl font-bold mb-4">Previous Orders</h2>
+          <h2 className="text-2xl font-bold mb-4">Previous Records</h2>
 
           <div className="bg-white p-4 rounded-xl shadow mb-4 flex flex-wrap gap-3">
             <div>
