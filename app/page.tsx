@@ -17,6 +17,13 @@ export default function CafeBillingApp() {
   const [customerOrderItems, setCustomerOrderItems] = useState<any[]>([]);
 const [expenses, setExpenses] = useState<any[]>([]);
 const [closingReports, setClosingReports] = useState<any[]>([]);
+const [customerCoupon, setCustomerCoupon] = useState<any>(null);
+const [couponPhone, setCouponPhone] = useState("");
+const [couponCode, setCouponCode] = useState("");
+const [couponDiscount, setCouponDiscount] = useState(10);
+const [couponType, setCouponType] = useState("percent");
+const [couponExpiry, setCouponExpiry] = useState("");
+const [coupons, setCoupons] = useState<any[]>([]);
 
 const [expenseForm, setExpenseForm] = useState({
   title: "",
@@ -71,6 +78,15 @@ function getYesterdayBusinessDate() {
   const d = new Date();
   d.setDate(d.getDate() - 1);
   return getBusinessDate(d);
+}
+
+async function loadCoupons() {
+  const { data } = await supabase
+    .from("coupons")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  setCoupons(data || []);
 }
 
 function getLastNDaysBusinessDates(days: number) {
@@ -764,35 +780,69 @@ const finalCustomerTotal =
 async function checkRepeatCustomer(phone: string) {
   if (!phone || phone.length < 10) {
     setIsRepeatCustomer(false);
+    setCustomerCoupon(null);
     return;
   }
 
-  const { count, error } = await supabase
-    .from("customer_orders")
-    .select("*", {
-      count: "exact",
-      head: true,
-    })
-    .eq("customer_phone", phone);
+  const { data: coupon } = await supabase
+    .from("coupons")
+    .select("*")
+    .eq("phone", phone)
+    .eq("active", true)
+    .single();
 
-  console.log("Phone:", phone);
-  console.log("Count:", count);
+  if (
+    coupon &&
+    new Date(coupon.expiry_date) > new Date()
+  ) {
+    setCustomerCoupon(coupon);
+    setIsRepeatCustomer(true);
+  } else {
+    setCustomerCoupon(null);
+    setIsRepeatCustomer(false);
+  }
+}
+
+async function createCoupon() {
+  const { error } = await supabase
+    .from("coupons")
+    .insert({
+      phone: couponPhone,
+      coupon_code: couponCode,
+      discount_type: couponType,
+      discount_value: couponDiscount,
+      expiry_date: couponExpiry,
+      active: true,
+      
+    });
 
   if (error) {
-    console.log(error);
+    alert(error.message);
     return;
   }
 
-  setIsRepeatCustomer((count || 0) >= 1);
+  alert("Coupon Created Successfully");
+
+  setCouponPhone("");
+  setCouponCode("");
+  setCouponDiscount(10);
 }
 
 function applyRepeatCoupon() {
-  const discount = Math.round(customerTotal * 0.1);
+  if (!customerCoupon) return;
 
-  setDiscountAmount(discount);
+  let discount = 0;
+
+  if (customerCoupon.discount_type === "percent") {
+    discount =
+      (customerTotal * customerCoupon.discount_value) / 100;
+  } else {
+    discount = customerCoupon.discount_value;
+  }
+
+  setDiscountAmount(Math.round(discount));
   setCouponApplied(true);
 }
-
 async function payWithRazorpay() {
   try {
     if (!(window as any).Razorpay) {
@@ -1896,6 +1946,25 @@ if (customerTableSlug) {
   }}
 />
 
+{customerCoupon && !couponApplied && (
+  <div className="bg-green-100 border border-green-500 p-3 rounded mb-3 mt-3">
+    <p className="font-bold text-green-700">
+      🎉 Coupon Available
+    </p>
+
+    <p>
+      Code: {customerCoupon.coupon_code}
+    </p>
+
+    <button
+      onClick={applyRepeatCoupon}
+      className="bg-green-600 text-white px-4 py-2 rounded mt-2"
+    >
+      Apply Coupon
+    </button>
+  </div>
+)}
+
 {isRepeatCustomer && !couponApplied && (
   <div className="bg-green-100 border border-green-500 p-3 rounded mb-3 mt-3">
     <p className="font-bold text-green-700">
@@ -2453,6 +2522,100 @@ return (
               Save Cafe Details
             </button>
           </div>
+
+<div className="bg-white p-4 rounded border mb-6">
+  <h2 className="text-xl font-bold mb-3">
+    🎟 Coupon Management
+  </h2>
+<div className="overflow-auto mt-4">
+  <table className="w-full border">
+    <thead>
+      <tr>
+        <th className="border p-2">Phone</th>
+        <th className="border p-2">Code</th>
+        <th className="border p-2">Discount</th>
+        <th className="border p-2">Expiry</th>
+        <th className="border p-2">Status</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      {coupons.map((coupon) => (
+        <tr key={coupon.id}>
+          <td className="border p-2">
+            {coupon.phone}
+          </td>
+
+          <td className="border p-2">
+            {coupon.coupon_code}
+          </td>
+
+          <td className="border p-2">
+            {coupon.discount_value}
+            {coupon.discount_type === "percent"
+              ? "%"
+              : "₹"}
+          </td>
+
+          <td className="border p-2">
+            {coupon.expiry_date?.slice(0, 10)}
+          </td>
+
+          <td className="border p-2">
+            {coupon.active ? "✅ Active" : "❌ Disabled"}
+          </td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+</div>
+  <input
+    className="border p-2 mr-2"
+    placeholder="Phone Number"
+    value={couponPhone}
+    onChange={(e) => setCouponPhone(e.target.value)}
+  />
+
+  <input
+    className="border p-2 mr-2"
+    placeholder="Coupon Code"
+    value={couponCode}
+    onChange={(e) => setCouponCode(e.target.value)}
+  />
+
+  <input
+    type="number"
+    className="border p-2 mr-2"
+    placeholder="Discount"
+    value={couponDiscount}
+    onChange={(e) =>
+      setCouponDiscount(Number(e.target.value))
+    }
+  />
+
+  <select
+    className="border p-2 mr-2"
+    value={couponType}
+    onChange={(e) => setCouponType(e.target.value)}
+  >
+    <option value="percent">%</option>
+    <option value="fixed">₹</option>
+  </select>
+
+  <input
+    type="date"
+    className="border p-2 mr-2"
+    value={couponExpiry}
+    onChange={(e) => setCouponExpiry(e.target.value)}
+  />
+
+  <button
+    onClick={createCoupon}
+    className="bg-green-600 text-white px-4 py-2 rounded"
+  >
+    Create Coupon
+  </button>
+</div>
 
           <h3 className="text-xl font-bold mb-3">Staff Approval & User-wise Sales</h3>
           <div className="bg-white rounded-xl shadow overflow-auto mb-6">
