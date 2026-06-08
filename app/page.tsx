@@ -762,9 +762,12 @@ const finalCustomerTotal =
   }
 
 async function checkRepeatCustomer(phone: string) {
-  if (!phone) return;
+  if (!phone || phone.length < 10) {
+    setIsRepeatCustomer(false);
+    return;
+  }
 
-  const { count } = await supabase
+  const { count, error } = await supabase
     .from("customer_orders")
     .select("*", {
       count: "exact",
@@ -772,11 +775,15 @@ async function checkRepeatCustomer(phone: string) {
     })
     .eq("customer_phone", phone);
 
-  if ((count || 0) >= 1) {
-    setIsRepeatCustomer(true);
-  } else {
-    setIsRepeatCustomer(false);
+  console.log("Phone:", phone);
+  console.log("Count:", count);
+
+  if (error) {
+    console.log(error);
+    return;
   }
+
+  setIsRepeatCustomer((count || 0) >= 1);
 }
 
 function applyRepeatCoupon() {
@@ -808,8 +815,8 @@ const { data: pendingOrder, error: pendingOrderError } =
     .insert({
       table_id: customerTable?.id,
       table_name: customerTable?.table_name,
-      customer_name: "Pending Razorpay Customer",
-      customer_phone: "",
+      customer_name: qrForm.customer_name,
+      customer_phone: qrForm.customer_phone,
       payment_status: "pending_payment",
       order_status: "pending",
       payment_method: "Razorpay",
@@ -961,8 +968,14 @@ if (razorpayPaymentId) {
       .insert({
         table_id: customerTable.id,
         table_name: customerTable.table_name,
-        customer_name: razorpayCustomerEmail || "Razorpay Customer",
-        customer_phone: razorpayCustomerPhone,
+        customer_name:
+  qrForm.customer_name ||
+  razorpayCustomerEmail ||
+  "Customer",
+
+customer_phone:
+  qrForm.customer_phone ||
+  razorpayCustomerPhone,
         payment_status: razorpayPaymentId ? "verified" : "pending_verification",
         order_status: razorpayPaymentId ? "paid" : "pending",
         payment_method: razorpayPaymentId ? "Razorpay" : "UPI",
