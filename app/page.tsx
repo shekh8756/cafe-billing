@@ -125,6 +125,9 @@ const [selectedCustomerOrderId, setSelectedCustomerOrderId] = useState("");
 const [selectedProductIdForOrder, setSelectedProductIdForOrder] = useState("");
 const [extraPaymentNote, setExtraPaymentNote] = useState("");
 const [selectedPaymentQr, setSelectedPaymentQr] = useState<any>(null);
+const [isRepeatCustomer, setIsRepeatCustomer] = useState(false);
+const [couponApplied, setCouponApplied] = useState(false);
+const [discountAmount, setDiscountAmount] = useState(0);
 useEffect(() => {
   const params = new URLSearchParams(window.location.search);
   const tableSlug = params.get("table");
@@ -677,7 +680,8 @@ useEffect(() => {
 
   const customerTax = settings.gst_enabled ? Math.round(customerSubtotal * 0.05) : 0;
   const customerTotal = customerSubtotal + customerTax;
-
+const finalCustomerTotal =
+  customerTotal - discountAmount;
   async function saveOrder() {
     if (cart.length === 0) return alert("Pehle product add karo");
 
@@ -756,6 +760,32 @@ useEffect(() => {
     const url = getCustomerOrderUrl(table);
     return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(url)}`;
   }
+
+async function checkRepeatCustomer(phone: string) {
+  if (!phone) return;
+
+  const { count } = await supabase
+    .from("customer_orders")
+    .select("*", {
+      count: "exact",
+      head: true,
+    })
+    .eq("customer_phone", phone);
+
+  if ((count || 0) >= 1) {
+    setIsRepeatCustomer(true);
+  } else {
+    setIsRepeatCustomer(false);
+  }
+}
+
+function applyRepeatCoupon() {
+  const discount = Math.round(customerTotal * 0.1);
+
+  setDiscountAmount(discount);
+  setCouponApplied(true);
+}
+
 async function payWithRazorpay() {
   try {
     if (!(window as any).Razorpay) {
@@ -786,7 +816,10 @@ const { data: pendingOrder, error: pendingOrderError } =
       transaction_id: "",
       subtotal: customerSubtotal,
       tax: customerTax,
-      total: customerTotal,
+      total: finalCustomerTotal,
+coupon_code: couponApplied ? "REPEAT10" : null,
+discount_amount: discountAmount,
+final_total: finalCustomerTotal,
       original_paid_amount: customerTotal,
       extra_due: 0,
       extra_payment_note: "",
@@ -810,7 +843,7 @@ await supabase.from("customer_order_items").insert(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-      amount: customerTotal,
+      amount: finalCustomerTotal,
       customer_order_id: pendingOrder.id,
     }),
     });
@@ -936,7 +969,10 @@ if (razorpayPaymentId) {
         transaction_id: razorpayPaymentId || "",
         subtotal: customerSubtotal,
         tax: customerTax,
-        total: customerTotal,
+        total: finalCustomerTotal,
+coupon_code: couponApplied ? "REPEAT10" : null,
+discount_amount: discountAmount,
+final_total: finalCustomerTotal,
         original_paid_amount: customerTotal,
         extra_due: 0,
         extra_payment_note: "",
@@ -1821,6 +1857,51 @@ if (customerTableSlug) {
             <div className="bg-white p-5 rounded-xl shadow h-fit xl:sticky xl:top-5">
               <h2 className="text-xl font-bold mb-3">Your Order</h2>
 
+              <input
+  className="w-full border p-3 rounded mt-3"
+  placeholder="Customer Name"
+  value={qrForm.customer_name}
+  onChange={(e) =>
+    setQrForm({
+      ...qrForm,
+      customer_name: e.target.value,
+    })
+  }
+/>
+
+<input
+  className="w-full border p-3 rounded mt-3"
+  placeholder="Phone Number"
+  value={qrForm.customer_phone}
+  onChange={(e) => {
+    setQrForm({
+      ...qrForm,
+      customer_phone: e.target.value,
+    });
+
+    checkRepeatCustomer(e.target.value);
+  }}
+/>
+
+{isRepeatCustomer && !couponApplied && (
+  <div className="bg-green-100 border border-green-500 p-3 rounded mb-3 mt-3">
+    <p className="font-bold text-green-700">
+      🎉 Welcome Back!
+    </p>
+
+    <p className="text-sm">
+      Repeat customer detected.
+    </p>
+
+    <button
+      onClick={applyRepeatCoupon}
+      className="bg-green-600 text-white px-4 py-2 rounded mt-2"
+    >
+      Apply 10% Discount Coupon
+    </button>
+  </div>
+)}
+
               {customerCart.length === 0 && <p className="text-gray-500">No item added</p>}
 
               {customerCart.map((item) => (
@@ -1840,6 +1921,19 @@ if (customerTableSlug) {
                 <div className="flex justify-between"><span>Subtotal</span><span>₹{customerSubtotal}</span></div>
                 {settings.gst_enabled && <div className="flex justify-between"><span>GST</span><span>₹{customerTax}</span></div>}
                 <div className="flex justify-between font-bold text-lg"><span>Total</span><span>₹{customerTotal}</span></div>
+                  {couponApplied && (
+  <>
+    <div className="flex justify-between text-green-700 font-bold">
+      <span>Discount</span>
+      <span>-₹{discountAmount}</span>
+    </div>
+
+    <div className="flex justify-between text-xl font-bold text-green-700">
+      <span>Final Total</span>
+      <span>₹{finalCustomerTotal}</span>
+    </div>
+  </>
+)}
               </div>
 
                 <button
@@ -1847,7 +1941,7 @@ if (customerTableSlug) {
                   onClick={payWithRazorpay}
                   className="w-full bg-black text-white p-3 rounded mt-4"
                 >
-                  {loading ? "Please wait..." : `Pay Now ₹${customerTotal}`}
+                  {loading ? "Please wait..." : `Pay Now ₹${finalCustomerTotal}`}
                 </button>
               </div>
             </div>
@@ -2188,6 +2282,8 @@ return (
               </div>
             ))}
 
+
+
             <div className="mt-4 space-y-1">
               <div className="flex justify-between">
                 <span>Subtotal</span>
@@ -2202,8 +2298,30 @@ return (
               )}
 
               <div className="flex justify-between font-bold text-lg">
+              
+                {isRepeatCustomer && !couponApplied && (
+  <button
+    onClick={applyRepeatCoupon}
+    className="w-full bg-green-600 text-white p-2 rounded mt-3"
+  >
+    🎉 Apply Repeat Customer Coupon (10% OFF)
+  </button>
+)}
                 <span>Total</span>
                 <span>₹{total}</span>
+                {couponApplied && (
+  <>
+    <div className="flex justify-between text-green-700 font-bold">
+      <span>Discount</span>
+      <span>-₹{discountAmount}</span>
+    </div>
+
+    <div className="flex justify-between text-xl font-bold text-green-700">
+      <span>Final Total</span>
+      <span>₹{finalCustomerTotal}</span>
+    </div>
+  </>
+)}
               </div>
             </div>
 
