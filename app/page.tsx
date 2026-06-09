@@ -811,7 +811,7 @@ async function createCoupon() {
   const { error } = await supabase
     .from("coupons")
     .insert({
-      phone: couponPhone,
+      allowed_phone: couponPhone,
       coupon_code: couponCode,
       discount_type: couponType,
       discount_value: couponDiscount,
