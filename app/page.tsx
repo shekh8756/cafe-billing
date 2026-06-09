@@ -791,7 +791,7 @@ async function checkRepeatCustomer(phone: string) {
   const { data: coupon } = await supabase
     .from("coupons")
     .select("*")
-    .eq("phone", phone)
+    .eq("allowed_phone", phone)
     .eq("active", true)
     .single();
 
