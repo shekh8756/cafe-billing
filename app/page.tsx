@@ -2577,8 +2577,8 @@ return (
       {coupons.map((coupon) => (
         <tr key={coupon.id}>
           <td className="border p-2">
-            {coupon.phone}
-          </td>
+  {coupon.allowed_phone}
+</td>
 
           <td className="border p-2">
             {coupon.coupon_code}
