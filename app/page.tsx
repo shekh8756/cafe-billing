@@ -168,6 +168,10 @@ useEffect(() => {
 }, []);
 
 useEffect(() => {
+  loadCoupons();
+}, []);
+
+useEffect(() => {
   if (!user) return;
   if (customerTableSlug) return;
 
@@ -813,7 +817,6 @@ async function createCoupon() {
       discount_value: couponDiscount,
       expiry_date: couponExpiry,
       active: true,
-      
     });
 
   if (error) {
@@ -823,10 +826,54 @@ async function createCoupon() {
 
   alert("Coupon Created Successfully");
 
+  await loadCoupons();
+
   setCouponPhone("");
   setCouponCode("");
   setCouponDiscount(10);
 }
+
+async function deleteCoupon(id: string) {
+  const ok = confirm(
+    "Coupon delete karna hai?"
+  );
+
+  if (!ok) return;
+
+  const { error } = await supabase
+    .from("coupons")
+    .delete()
+    .eq("id", id);
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  alert("Coupon deleted");
+
+  loadCoupons();
+}
+
+async function toggleCoupon(
+  id: string,
+  active: boolean
+) {
+  const { error } = await supabase
+    .from("coupons")
+    .update({
+      active: !active,
+    })
+    .eq("id", id);
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  loadCoupons();
+}
+
 
 function applyRepeatCoupon() {
   if (!customerCoupon) return;
@@ -852,6 +899,7 @@ async function payWithRazorpay() {
     if (!customerTotal || customerTotal <= 0) {
       return alert("Invalid total");
     }
+
 const pendingItems = customerCart.map((item) => ({
   product_name: item.name,
   price: item.price,
@@ -874,7 +922,9 @@ const { data: pendingOrder, error: pendingOrderError } =
       subtotal: customerSubtotal,
       tax: customerTax,
       total: finalCustomerTotal,
-coupon_code: couponApplied ? "REPEAT10" : null,
+coupon_code: couponApplied
+  ? customerCoupon?.coupon_code
+  : null,
 discount_amount: discountAmount,
 final_total: finalCustomerTotal,
       original_paid_amount: customerTotal,
@@ -1033,7 +1083,9 @@ customer_phone:
         subtotal: customerSubtotal,
         tax: customerTax,
         total: finalCustomerTotal,
-coupon_code: couponApplied ? "REPEAT10" : null,
+coupon_code: couponApplied
+  ? customerCoupon?.coupon_code
+  : null,
 discount_amount: discountAmount,
 final_total: finalCustomerTotal,
         original_paid_amount: customerTotal,
@@ -1965,25 +2017,6 @@ if (customerTableSlug) {
   </div>
 )}
 
-{isRepeatCustomer && !couponApplied && (
-  <div className="bg-green-100 border border-green-500 p-3 rounded mb-3 mt-3">
-    <p className="font-bold text-green-700">
-      🎉 Welcome Back!
-    </p>
-
-    <p className="text-sm">
-      Repeat customer detected.
-    </p>
-
-    <button
-      onClick={applyRepeatCoupon}
-      className="bg-green-600 text-white px-4 py-2 rounded mt-2"
-    >
-      Apply 10% Discount Coupon
-    </button>
-  </div>
-)}
-
               {customerCart.length === 0 && <p className="text-gray-500">No item added</p>}
 
               {customerCart.map((item) => (
@@ -2536,6 +2569,7 @@ return (
         <th className="border p-2">Discount</th>
         <th className="border p-2">Expiry</th>
         <th className="border p-2">Status</th>
+        <th className="border p-2">Action</th>
       </tr>
     </thead>
 
@@ -2564,6 +2598,14 @@ return (
           <td className="border p-2">
             {coupon.active ? "✅ Active" : "❌ Disabled"}
           </td>
+          <td className="border p-2">
+  <button
+    onClick={() => deleteCoupon(coupon.id)}
+    className="bg-red-600 text-white px-3 py-1 rounded"
+  >
+    Delete
+  </button>
+</td>
         </tr>
       ))}
     </tbody>
