@@ -3185,6 +3185,48 @@ return (
     Save Expense
   </button>
 </div>
+
+<div className="bg-white rounded-xl shadow p-5 mt-6">
+  <h3 className="text-xl font-bold mb-4">
+    Expense History
+  </h3>
+
+  <div className="overflow-x-auto">
+    <table className="w-full border">
+      <thead>
+        <tr className="bg-gray-100">
+          <th className="border p-2">Date</th>
+          <th className="border p-2">Title</th>
+          <th className="border p-2">Amount</th>
+          <th className="border p-2">Note</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {expenses.map((expense) => (
+          <tr key={expense.id}>
+            <td className="border p-2">
+              {expense.expense_date}
+            </td>
+
+            <td className="border p-2">
+              {expense.title}
+            </td>
+
+            <td className="border p-2">
+              ₹{expense.amount}
+            </td>
+
+            <td className="border p-2">
+              {expense.note}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+</div>
+
           <div className="bg-white p-4 rounded-xl shadow mb-4 flex flex-wrap gap-3">
             <div>
               <label className="text-sm font-bold">From Date</label>
